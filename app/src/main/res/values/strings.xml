@@ -1,0 +1,100 @@
+<resources>
+    <string name="app_name">Sacred Steps</string>
+    <string name="app_subtitle">Sacred Steps to Redemption</string>
+
+    <!-- Navigation -->
+    <string name="nav_today">Today</string>
+    <string name="nav_podcasts">Podcasts</string>
+    <string name="nav_journey">Journey</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Weekly Podcasts -->
+    <string name="podcast_hero_eyebrow">%1$d WEEKLY EPISODES · MURF STUDIO VOICES</string>
+    <string name="podcast_hero_title">Weekly Podcasts in Grace</string>
+    <string name="podcast_hero_subtitle">Two alternating voices walk you through each week\'s Scripture, Truth, Affirmation, Sacred Steps, and reflection questions.</string>
+    <string name="podcast_this_week_spotlight">THIS WEEK\'S EPISODE · WEEK %1$d</string>
+    <string name="podcast_listen_now">Listen Now</string>
+    <string name="podcast_filter_all">All 52 Weeks</string>
+    <string name="podcast_all_52_weeks_title">All 52 Weekly Episodes</string>
+    <string name="podcast_month_episodes_title">%1$s Episodes</string>
+    <string name="podcast_episode_count_label">%1$d episodes</string>
+    <string name="podcast_play_week_desc">Play Week %1$d: %2$s</string>
+    <string name="podcast_back_to_episodes">Back to weekly podcast list</string>
+    <string name="podcast_all_episodes">All Weeks</string>
+    <string name="podcast_swap_voices_desc">Swap which alternating host opens this episode</string>
+    <string name="podcast_lead_voice_label">Lead: %1$s</string>
+    <string name="podcast_alternating_voices_badge">Alternating Voices</string>
+    <string name="podcast_status_synthesizing">Synthesizing…</string>
+    <string name="podcast_status_playing">Speaking</string>
+    <string name="podcast_status_paused">Paused</string>
+    <string name="podcast_status_error">Retry</string>
+    <string name="podcast_status_ready">Ready</string>
+    <string name="podcast_prev_segment">Previous segment</string>
+    <string name="podcast_next_segment">Next segment</string>
+    <string name="podcast_play">Play podcast</string>
+    <string name="podcast_pause">Pause podcast</string>
+    <string name="podcast_cached_count">%1$d / %2$d segments cached</string>
+    <string name="podcast_offline_ready">Offline Ready</string>
+    <string name="podcast_preparing_percent">Preparing %1$d%%</string>
+    <string name="podcast_prepare_full_episode">Prepare Offline</string>
+    <string name="podcast_transcript_title">Alternating Host Script</string>
+    <string name="podcast_turn_counter">Segment %1$d of %2$d</string>
+    <string name="podcast_cached_segment_desc">Cached for offline playback</string>
+    <string name="podcast_reflection_questions_title">Weekly Reflection Questions</string>
+    <string name="podcast_next_week_label">NEXT WEEK\'S JOURNEY</string>
+    <string name="podcast_murf_setup_title">Connect Murf.ai Voice Key</string>
+    <string name="podcast_murf_setup_body">Add MURF_API_KEY in the Secrets panel in AI Studio to synthesize studio-quality alternating voices. You can read every week\'s full script below right now.</string>
+
+    <!-- Grounding / SOS -->
+    <string name="action_ground_yourself">Breathe</string>
+    <string name="grounding_title">Right Here, Right Now</string>
+    <string name="grounding_subtitle">Pause with me for one slow minute. Nothing needs to be solved in this breath.</string>
+    <string name="grounding_prayer_title">A Simple Anchor Prayer</string>
+    <string name="grounding_prayer_body">"God, I do not have to carry tomorrow. Just hold me steady in this single minute."</string>
+    <string name="grounding_support_note">Sacred Steps walks alongside you, never in place of your doctor, therapist, or sponsor. If you are in crisis, call or text 988 anytime.</string>
+    <string name="action_close_grounding">Return Gently</string>
+
+    <!-- Today Screen -->
+    <string name="welcome_back_greeting">Welcome back. Today is a fresh step.</string>
+    <string name="heart_checkin_prompt">How is your heart arriving today?</string>
+    <string name="step_label_scripture">S · Scripture Anchor</string>
+    <string name="step_label_truth">T · Truth That Frees</string>
+    <string name="step_label_embrace">E · Embrace Affirmation</string>
+    <string name="step_label_practice">P · One Small Practice</string>
+    <string name="reflection_section_title">Private Reflection</string>
+    <string name="journal_placeholder">Write honestly here. No performance. Only grace and what is true today…</string>
+    <string name="action_save_journal">Save Reflection</string>
+    <string name="journal_saved_toast">Saved safely to your private journal.</string>
+    <string name="action_mark_walked">Mark Today Walked in Grace</string>
+    <string name="day_walked_badge">Walked in Grace</string>
+
+    <!-- Freemium Unlock -->
+    <string name="unlock_dialog_title">Continue Your 365-Day Walk</string>
+    <string name="unlock_dialog_body">Days 1 through 7 are always open. Enter your email to unlock all 365 daily steps and receive the complimentary 30-Day Redemption Prayer Guide. Zero spam. No shame.</string>
+    <string name="unlock_email_label">Your email address</string>
+    <string name="unlock_name_label">First name (optional)</string>
+    <string name="unlock_button_submit">Unlock All 365 Days</string>
+    <string name="unlock_button_later">Stay in Days 1–7 for Now</string>
+    <string name="unlock_error_invalid_email">Please enter a valid email address so we can send your Prayer Guide.</string>
+    <string name="unlock_success_message">All 365 days are open to you. Your 30-Day Redemption Prayer Guide is on its way.</string>
+
+    <!-- Journey Screen -->
+    <string name="journey_tab_calendar">365 Days</string>
+    <string name="journey_tab_workbooks">4 Workbooks</string>
+    <string name="days_walked_label">Days Walked in Grace</string>
+    <string name="shadows_trauma_notice">Go at your own pace. If any memory feels heavy, tap Breathe at the top and step away without guilt.</string>
+    <string name="new_creation_notice">This space celebrates what grace is building in you. No looking backward in shame.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_notifications_title">Daily Grace Reminder</string>
+    <string name="settings_notifications_subtitle">A gentle nudge when your next sacred step is ready</string>
+    <string name="settings_export_title">Export Private Journal</string>
+    <string name="settings_export_share">Share Journal Text</string>
+    <string name="settings_export_save_file">Save Journal to File</string>
+    <string name="settings_disclaimer_title">Care &amp; Support</string>
+    <string name="settings_disclaimer_body">Sacred Steps to Redemption is a faith-based recovery companion inspired by C. Lamont Patrick\'s book and four workbooks. It does not replace medical care, licensed therapy, or a trusted sponsor, and never promises guaranteed sobriety. You are worth honest support.</string>
+    <string name="notification_channel_name">Daily Sacred Steps</string>
+    <string name="notification_channel_desc">Gentle daily reminders for your Sacred S.T.E.P. reading and reflection</string>
+    <string name="notification_title">Your sacred step for today is ready</string>
+    <string name="notification_body">Take two quiet minutes to breathe, read today\'s grace, and check in with your heart.</string>
+</resources>

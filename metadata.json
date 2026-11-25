@@ -1,0 +1,8 @@
+{
+  "name": "Sacred Steps",
+  "description": "A 365-day faith-based recovery affirmation and private local-first journaling companion built around the Sacred S.T.E.P. Method.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
