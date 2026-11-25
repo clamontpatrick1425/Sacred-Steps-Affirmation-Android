@@ -3,6 +3,7 @@ package com.example.data.local
 import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,23 @@ import kotlinx.coroutines.launch
 object DatabaseProvider {
 
     private const val DATABASE_NAME = "sacred_steps.db"
+
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `monthly_journal_responses` (
+                    `monthNumber` INTEGER NOT NULL,
+                    `entryKey` TEXT NOT NULL,
+                    `content` TEXT NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`monthNumber`, `entryKey`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE IF EXISTS `workbook_notes`")
+        }
+    }
 
     @Volatile
     private var instance: SacredStepsDatabase? = null
@@ -35,6 +53,7 @@ object DatabaseProvider {
             SacredStepsDatabase::class.java,
             DATABASE_NAME
         )
+            .addMigrations(MIGRATION_1_2)
             .addCallback(PrepopulateCallback())
             .build()
     }

@@ -7,13 +7,13 @@ import androidx.room.RoomDatabase
     entities = [
         AffirmationEntity::class,
         JournalEntryEntity::class,
-        WorkbookNoteEntity::class
+        MonthlyJournalResponseEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SacredStepsDatabase : RoomDatabase() {
     abstract fun affirmationDao(): AffirmationDao
     abstract fun journalEntryDao(): JournalEntryDao
-    abstract fun workbookNoteDao(): WorkbookNoteDao
+    abstract fun monthlyJournalResponseDao(): MonthlyJournalResponseDao
 }

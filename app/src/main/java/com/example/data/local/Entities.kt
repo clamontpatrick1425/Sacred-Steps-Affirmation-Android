@@ -27,10 +27,10 @@ data class JournalEntryEntity(
     val timestamp: Long
 )
 
-@Entity(tableName = "workbook_notes", primaryKeys = ["moduleId", "promptKey"])
-data class WorkbookNoteEntity(
-    val moduleId: String,
-    val promptKey: String,
+@Entity(tableName = "monthly_journal_responses", primaryKeys = ["monthNumber", "entryKey"])
+data class MonthlyJournalResponseEntity(
+    val monthNumber: Int,
+    val entryKey: String,
     val content: String,
     val updatedAt: Long
 )

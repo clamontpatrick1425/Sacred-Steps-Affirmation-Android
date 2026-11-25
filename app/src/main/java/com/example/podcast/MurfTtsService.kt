@@ -24,10 +24,14 @@ import java.util.concurrent.TimeUnit
 data class MurfGenerateRequest(
     val text: String,
     val voiceId: String,
+    val style: String? = "Conversational",
+    val variation: Int = 4,
+    val rate: Int = -4,
+    val pitch: Int = 0,
     val format: String = "MP3",
     val modelVersion: String = "GEN2",
-    val sampleRate: Int = 24000,
-    val channelType: String = "MONO"
+    val sampleRate: Int = 44100,
+    val channelType: String = "STEREO"
 )
 
 @JsonClass(generateAdapter = true)
@@ -48,9 +52,15 @@ interface MurfApiService {
 }
 
 class MurfAudioRepository(
-    context: Context
+    private val context: Context
 ) {
-    private val cacheRoot: File = File(context.cacheDir, "sacred_podcasts").apply { mkdirs() }
+    // Versioned cache directory keyed by manifest track_id (POD-MONTH-XX / POD-DAY-XXX)
+    private val cacheRoot: File = File(context.cacheDir, "sacred_podcasts_v3").apply {
+        mkdirs()
+        // Clean up legacy weekly podcast caches if present
+        File(context.cacheDir, "sacred_podcasts").takeIf { it.exists() }?.deleteRecursively()
+        File(context.cacheDir, "sacred_podcasts_v2").takeIf { it.exists() }?.deleteRecursively()
+    }
 
     private val okHttpClient: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {
@@ -87,26 +97,55 @@ class MurfAudioRepository(
         return key.isNotBlank() && key != PLACEHOLDER_KEY
     }
 
-    fun cacheFileFor(weekNumber: Int, turn: PodcastDialogueTurn): File {
-        val weekDir = File(cacheRoot, "week_$weekNumber").apply { mkdirs() }
-        val safeVoice = turn.voiceId.replace(Regex("[^a-zA-Z0-9_-]"), "_")
-        return File(weekDir, "turn_${turn.index}_${safeVoice}.mp3")
+    /**
+     * Checks if a pre-rendered MP3 matching the manifest's `audio_base_path + audio_file`
+     * has been bundled in `app/src/main/assets/media/audio/v1/...` and extracts it to cache
+     * for MediaPlayer playback. Returns null when using on-demand Murf studio synthesis.
+     */
+    suspend fun resolveBundledTrackAsset(
+        audioBasePath: String,
+        relativeAudioFile: String,
+        trackId: String
+    ): File? = withContext(Dispatchers.IO) {
+        val normalizedBase = audioBasePath.trimEnd('/')
+        val normalizedRel = relativeAudioFile.trimStart('/')
+        val assetPath = "$normalizedBase/$normalizedRel"
+        val safeTrack = sanitizeKey(trackId)
+        val cachedAssetFile = File(File(cacheRoot, safeTrack).apply { mkdirs() }, "bundled_full.mp3")
+        if (cachedAssetFile.exists() && cachedAssetFile.length() > 0L) {
+            return@withContext cachedAssetFile
+        }
+        runCatching {
+            context.assets.open(assetPath).use { input ->
+                cachedAssetFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (cachedAssetFile.exists() && cachedAssetFile.length() > 0L) cachedAssetFile else null
+        }.getOrNull()
     }
 
-    fun isTurnCached(weekNumber: Int, turn: PodcastDialogueTurn): Boolean {
-        val file = cacheFileFor(weekNumber, turn)
+    fun cacheFileFor(trackId: String, turn: PodcastDialogueTurn): File {
+        val trackDir = File(cacheRoot, sanitizeKey(trackId)).apply { mkdirs() }
+        val safeVoice = sanitizeKey(turn.voiceId)
+        val safeStyle = sanitizeKey(turn.style)
+        return File(trackDir, "turn_${turn.index}_${safeVoice}_${safeStyle}.mp3")
+    }
+
+    fun isTurnCached(trackId: String, turn: PodcastDialogueTurn): Boolean {
+        val file = cacheFileFor(trackId, turn)
         return file.exists() && file.length() > 0L
     }
 
-    fun getCachedTurnIndices(weekNumber: Int, turns: List<PodcastDialogueTurn>): Set<Int> {
-        return turns.filter { isTurnCached(weekNumber, it) }.map { it.index }.toSet()
+    fun getCachedTurnIndices(trackId: String, turns: List<PodcastDialogueTurn>): Set<Int> {
+        return turns.filter { isTurnCached(trackId, it) }.map { it.index }.toSet()
     }
 
     suspend fun getOrSynthesizeTurn(
-        weekNumber: Int,
+        trackId: String,
         turn: PodcastDialogueTurn
     ): Result<File> = withContext(Dispatchers.IO) {
-        val targetFile = cacheFileFor(weekNumber, turn)
+        val targetFile = cacheFileFor(trackId, turn)
         if (targetFile.exists() && targetFile.length() > 0L) {
             return@withContext Result.success(targetFile)
         }
@@ -121,15 +160,7 @@ class MurfAudioRepository(
         }
 
         runCatching {
-            val response = api.generateSpeech(
-                apiKey = apiKey,
-                request = MurfGenerateRequest(
-                    text = turn.spokenText,
-                    voiceId = turn.voiceId,
-                    format = "MP3",
-                    modelVersion = "GEN2"
-                )
-            )
+            val response = requestWithStyleFallback(apiKey = apiKey, turn = turn)
 
             if (!response.isSuccessful) {
                 val errBody = response.errorBody()?.string()?.take(240).orEmpty()
@@ -146,6 +177,71 @@ class MurfAudioRepository(
             downloadAudioToFile(audioUrl, targetFile)
             targetFile
         }
+    }
+
+    /**
+     * Synthesizes using the turn's expressiveness profile (style, variation, unhurried rate, 44.1kHz stereo).
+     * If Murf ever rejects a specific style for a voice with HTTP 400, gracefully falls back to Conversational.
+     */
+    private suspend fun requestWithStyleFallback(
+        apiKey: String,
+        turn: PodcastDialogueTurn
+    ): Response<MurfGenerateResponse> {
+        val primary = api.generateSpeech(
+            apiKey = apiKey,
+            request = MurfGenerateRequest(
+                text = turn.spokenText,
+                voiceId = turn.voiceId,
+                style = turn.style,
+                variation = turn.variation.coerceIn(0, 5),
+                rate = turn.rate.coerceIn(-50, 50),
+                pitch = turn.pitch.coerceIn(-50, 50),
+                format = "MP3",
+                modelVersion = "GEN2",
+                sampleRate = 44100,
+                channelType = "STEREO"
+            )
+        )
+        if (primary.isSuccessful || primary.code() != 400) {
+            return primary
+        }
+
+        if (!turn.style.equals("Conversational", ignoreCase = true)) {
+            val conversational = api.generateSpeech(
+                apiKey = apiKey,
+                request = MurfGenerateRequest(
+                    text = turn.spokenText,
+                    voiceId = turn.voiceId,
+                    style = "Conversational",
+                    variation = turn.variation.coerceIn(0, 5),
+                    rate = turn.rate.coerceIn(-50, 50),
+                    pitch = turn.pitch.coerceIn(-50, 50),
+                    format = "MP3",
+                    modelVersion = "GEN2",
+                    sampleRate = 44100,
+                    channelType = "STEREO"
+                )
+            )
+            if (conversational.isSuccessful || conversational.code() != 400) {
+                return conversational
+            }
+        }
+
+        return api.generateSpeech(
+            apiKey = apiKey,
+            request = MurfGenerateRequest(
+                text = turn.spokenText,
+                voiceId = turn.voiceId,
+                style = null,
+                variation = turn.variation.coerceIn(0, 5),
+                rate = turn.rate.coerceIn(-50, 50),
+                pitch = turn.pitch.coerceIn(-50, 50),
+                format = "MP3",
+                modelVersion = "GEN2",
+                sampleRate = 44100,
+                channelType = "STEREO"
+            )
+        )
     }
 
     private fun downloadAudioToFile(url: String, destination: File) {
@@ -170,6 +266,9 @@ class MurfAudioRepository(
             }
         }
     }
+
+    private fun sanitizeKey(raw: String): String =
+        raw.replace(Regex("[^a-zA-Z0-9_-]"), "_")
 
     companion object {
         private const val PLACEHOLDER_KEY = "MY_MURF_API_KEY"

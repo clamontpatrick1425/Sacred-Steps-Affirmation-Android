@@ -25,34 +25,37 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.DownloadForOffline
+import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,46 +68,43 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.podcast.PlayablePodcastTrack
 import com.example.podcast.PodcastDialogueTurn
 import com.example.podcast.PodcastHost
 import com.example.podcast.PodcastPlaybackStatus
 import com.example.podcast.PodcastUiState
-import com.example.podcast.WeeklyPodcastEpisode
 import com.example.ui.theme.LocalSacredColors
+import java.util.Locale
+
+private val PLAYBACK_SPEEDS = listOf(0.8f, 1.0f, 1.2f)
 
 @Composable
 fun PodcastEpisodePlayerView(
-    episode: WeeklyPodcastEpisode,
+    track: PlayablePodcastTrack,
     uiState: PodcastUiState,
-    onBack: () -> Unit,
+    onMinimize: () -> Unit,
     onTogglePlayPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSkipBack15: () -> Unit,
+    onSkipForward15: () -> Unit,
+    onSetSpeed: (Float) -> Unit,
     onPreviousTurn: () -> Unit,
     onNextTurn: () -> Unit,
     onSelectTurn: (Int) -> Unit,
     onSwapLeadHost: () -> Unit,
     onPrepareOffline: () -> Unit
 ) {
-    BackHandler(onBack = onBack)
+    BackHandler(onBack = onMinimize)
 
     val sacredColors = LocalSacredColors.current
-    val listState = rememberLazyListState()
-
-    LaunchedEffect(uiState.activeTurnIndex) {
-        // Offset by 2 because header deck + transcript header precede turn items
-        val targetIndex = (uiState.activeTurnIndex + 1).coerceAtLeast(0)
-        if (uiState.playbackStatus == PodcastPlaybackStatus.PLAYING ||
-            uiState.playbackStatus == PodcastPlaybackStatus.SYNTHESIZING
-        ) {
-            listState.animateScrollToItem(targetIndex)
-        }
-    }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.TopCenter
     ) {
         LazyColumn(
-            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 680.dp)
@@ -119,7 +119,7 @@ fun PodcastEpisodePlayerView(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Surface(
-                        onClick = onBack,
+                        onClick = onMinimize,
                         shape = RoundedCornerShape(14.dp),
                         color = sacredColors.warmCard,
                         border = BorderStroke(1.dp, sacredColors.hairline),
@@ -131,13 +131,13 @@ fun PodcastEpisodePlayerView(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = stringResource(R.string.podcast_back_to_episodes),
+                                imageVector = Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = stringResource(R.string.podcast_minimize_player_desc),
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             Text(
-                                text = stringResource(R.string.podcast_all_episodes),
+                                text = stringResource(R.string.podcast_minimize_player),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -177,9 +177,13 @@ fun PodcastEpisodePlayerView(
 
             item(key = "player_studio_deck") {
                 PodcastStudioDeck(
-                    episode = episode,
+                    track = track,
                     uiState = uiState,
                     onTogglePlayPause = onTogglePlayPause,
+                    onSeek = onSeek,
+                    onSkipBack15 = onSkipBack15,
+                    onSkipForward15 = onSkipForward15,
+                    onSetSpeed = onSetSpeed,
                     onPreviousTurn = onPreviousTurn,
                     onNextTurn = onNextTurn,
                     onPrepareOffline = onPrepareOffline
@@ -252,7 +256,7 @@ fun PodcastEpisodePlayerView(
                 }
             }
 
-            item(key = "transcript_heading") {
+            item(key = "chapters_heading") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -261,13 +265,13 @@ fun PodcastEpisodePlayerView(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = stringResource(R.string.podcast_transcript_title),
+                        text = stringResource(R.string.podcast_chapters_title),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = stringResource(
-                            R.string.podcast_turn_counter,
+                            R.string.podcast_chapter_counter,
                             uiState.activeTurnIndex + 1,
                             uiState.dialogueTurns.size.coerceAtLeast(1)
                         ),
@@ -279,11 +283,11 @@ fun PodcastEpisodePlayerView(
 
             items(
                 items = uiState.dialogueTurns,
-                key = { turn -> "turn_${episode.weekNumber}_${turn.index}_${turn.voiceId}" }
+                key = { turn -> "chapter_${track.trackId}_${turn.index}_${turn.voiceId}" }
             ) { turn ->
                 val isActive = turn.index == uiState.activeTurnIndex
                 val isCached = turn.index in uiState.cachedTurnIndices
-                PodcastTurnCard(
+                PodcastChapterRow(
                     turn = turn,
                     isActive = isActive,
                     isPlaying = isActive && uiState.playbackStatus == PodcastPlaybackStatus.PLAYING,
@@ -293,8 +297,11 @@ fun PodcastEpisodePlayerView(
                 )
             }
 
-            item(key = "reflection_questions_summary") {
-                PodcastReflectionCard(episode = episode)
+            item(key = "track_companion_summary") {
+                when (track) {
+                    is PlayablePodcastTrack.DailyEpisode -> DailySacredStepReferenceCard(track)
+                    is PlayablePodcastTrack.MonthlyOrientation -> MonthlyRoadmapReferenceCard(track)
+                }
             }
 
             item(key = "bottom_spacer") {
@@ -306,9 +313,13 @@ fun PodcastEpisodePlayerView(
 
 @Composable
 private fun PodcastStudioDeck(
-    episode: WeeklyPodcastEpisode,
+    track: PlayablePodcastTrack,
     uiState: PodcastUiState,
     onTogglePlayPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSkipBack15: () -> Unit,
+    onSkipForward15: () -> Unit,
+    onSetSpeed: (Float) -> Unit,
     onPreviousTurn: () -> Unit,
     onNextTurn: () -> Unit,
     onPrepareOffline: () -> Unit
@@ -331,6 +342,9 @@ private fun PodcastStudioDeck(
         ),
         label = "speakerPulseAlpha"
     )
+
+    val durationFloat = if (uiState.durationMs > 0L) uiState.durationMs.toFloat() else 1f
+    val currentPosFloat = uiState.currentPositionMs.coerceIn(0L, uiState.durationMs.coerceAtLeast(1L)).toFloat()
 
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
@@ -366,7 +380,7 @@ private fun PodcastStudioDeck(
                         color = sacredColors.dawnGold.copy(alpha = 0.22f)
                     ) {
                         Text(
-                            text = "WEEK ${episode.weekNumber} OF 52 · ${episode.monthName.uppercase()}",
+                            text = track.badgeLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
@@ -393,18 +407,17 @@ private fun PodcastStudioDeck(
 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = episode.weekTitle,
+                        text = track.title,
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                     Text(
-                        text = episode.monthTheme,
+                        text = track.subtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
                     )
                 }
 
-                // Active Speaker Pill
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f),
@@ -447,7 +460,8 @@ private fun PodcastStudioDeck(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = activeTurn?.sectionLabel ?: episode.weekTitle,
+                                text = activeTurn?.let { "${it.timestampLabel} · ${it.sectionLabel}" }
+                                    ?: track.title,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
                                 maxLines = 1,
@@ -468,21 +482,50 @@ private fun PodcastStudioDeck(
                     }
                 }
 
-                // Segment progress indicator
-                LinearProgressIndicator(
-                    progress = { uiState.turnProgressFraction.coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(99.dp)),
-                    color = speakerAccent,
-                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f)
-                )
+                // Interactive Media3 Scrubber with MM:SS timestamps
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Slider(
+                        value = currentPosFloat,
+                        onValueChange = { onSeek(it.toLong()) },
+                        valueRange = 0f..durationFloat,
+                        enabled = uiState.durationMs > 0L,
+                        colors = SliderDefaults.colors(
+                            thumbColor = sacredColors.dawnGold,
+                            activeTrackColor = speakerAccent,
+                            inactiveTrackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f),
+                            disabledThumbColor = sacredColors.dawnGold.copy(alpha = 0.45f),
+                            disabledActiveTrackColor = speakerAccent.copy(alpha = 0.45f),
+                            disabledInactiveTrackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.16f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("podcast_scrubber_slider")
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatAudioDuration(uiState.currentPositionMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f)
+                        )
+                        Text(
+                            text = if (uiState.durationMs > 0L) {
+                                formatAudioDuration(uiState.durationMs)
+                            } else {
+                                track.durationFormatted
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f)
+                        )
+                    }
+                }
 
-                // Transport Controls
+                // Transport Controls: Prev Chapter, -15s, Play/Pause, +15s, Next Chapter
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -496,13 +539,28 @@ private fun PodcastStudioDeck(
                             imageVector = Icons.Rounded.SkipPrevious,
                             contentDescription = stringResource(R.string.podcast_prev_segment),
                             tint = MaterialTheme.colorScheme.onPrimary.copy(
-                                alpha = if (uiState.activeTurnIndex > 0) 1f else 0.4f
+                                alpha = if (uiState.activeTurnIndex > 0) 1f else 0.35f
                             ),
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(20.dp))
+                    IconButton(
+                        onClick = onSkipBack15,
+                        enabled = uiState.durationMs > 0L,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("podcast_skip_back_15_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Replay,
+                            contentDescription = stringResource(R.string.podcast_rewind_15),
+                            tint = MaterialTheme.colorScheme.onPrimary.copy(
+                                alpha = if (uiState.durationMs > 0L) 0.95f else 0.35f
+                            ),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
 
                     FilledIconButton(
                         onClick = onTogglePlayPause,
@@ -511,7 +569,7 @@ private fun PodcastStudioDeck(
                             contentColor = MaterialTheme.colorScheme.onTertiary
                         ),
                         modifier = Modifier
-                            .size(62.dp)
+                            .size(64.dp)
                             .testTag("podcast_play_pause_button")
                     ) {
                         when (uiState.playbackStatus) {
@@ -526,20 +584,35 @@ private fun PodcastStudioDeck(
                                 Icon(
                                     imageVector = Icons.Rounded.Pause,
                                     contentDescription = stringResource(R.string.podcast_pause),
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(34.dp)
                                 )
                             }
                             else -> {
                                 Icon(
                                     imageVector = Icons.Rounded.PlayArrow,
                                     contentDescription = stringResource(R.string.podcast_play),
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(34.dp)
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(20.dp))
+                    IconButton(
+                        onClick = onSkipForward15,
+                        enabled = uiState.durationMs > 0L,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("podcast_skip_forward_15_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Forward10,
+                            contentDescription = stringResource(R.string.podcast_forward_15),
+                            tint = MaterialTheme.colorScheme.onPrimary.copy(
+                                alpha = if (uiState.durationMs > 0L) 0.95f else 0.35f
+                            ),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
 
                     IconButton(
                         onClick = onNextTurn,
@@ -552,14 +625,48 @@ private fun PodcastStudioDeck(
                             imageVector = Icons.Rounded.SkipNext,
                             contentDescription = stringResource(R.string.podcast_next_segment),
                             tint = MaterialTheme.colorScheme.onPrimary.copy(
-                                alpha = if (uiState.activeTurnIndex < uiState.dialogueTurns.lastIndex) 1f else 0.4f
+                                alpha = if (uiState.activeTurnIndex < uiState.dialogueTurns.lastIndex) 1f else 0.35f
                             ),
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
 
-                // Offline Pre-Generation Action
+                // Playback Speed Selector Chips (0.8x, 1.0x, 1.2x)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PLAYBACK_SPEEDS.forEach { speed ->
+                        val selected = uiState.playbackSpeed == speed
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onSetSpeed(speed) },
+                            label = {
+                                Text(
+                                    text = "${speed}x",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = sacredColors.dawnGold,
+                                selectedLabelColor = MaterialTheme.colorScheme.onTertiary,
+                                containerColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f),
+                                labelColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = selected,
+                                borderColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f),
+                                selectedBorderColor = sacredColors.dawnGold
+                            ),
+                            modifier = Modifier.testTag("podcast_speed_${speed}x")
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -577,7 +684,7 @@ private fun PodcastStudioDeck(
 
                     FilledTonalButton(
                         onClick = onPrepareOffline,
-                        enabled = !uiState.isPreparingEpisode && !allCached,
+                        enabled = !uiState.isPreparingTrack && !allCached,
                         modifier = Modifier.testTag("podcast_prepare_offline_button")
                     ) {
                         Icon(
@@ -593,7 +700,7 @@ private fun PodcastStudioDeck(
                         Text(
                             text = when {
                                 allCached -> stringResource(R.string.podcast_offline_ready)
-                                uiState.isPreparingEpisode -> stringResource(
+                                uiState.isPreparingTrack -> stringResource(
                                     R.string.podcast_preparing_percent,
                                     (uiState.prepareProgress * 100).toInt()
                                 )
@@ -603,7 +710,7 @@ private fun PodcastStudioDeck(
                     }
                 }
 
-                AnimatedVisibility(visible = uiState.isPreparingEpisode) {
+                AnimatedVisibility(visible = uiState.isPreparingTrack) {
                     LinearProgressIndicator(
                         progress = { uiState.prepareProgress.coerceIn(0f, 1f) },
                         modifier = Modifier
@@ -620,7 +727,7 @@ private fun PodcastStudioDeck(
 }
 
 @Composable
-private fun PodcastTurnCard(
+private fun PodcastChapterRow(
     turn: PodcastDialogueTurn,
     isActive: Boolean,
     isPlaying: Boolean,
@@ -640,125 +747,198 @@ private fun PodcastTurnCard(
             width = if (isActive) 1.5.dp else 1.dp,
             color = if (isActive) hostColor else sacredColors.hairline
         ),
-        tonalElevation = if (isActive) 3.dp else 0.dp,
+        tonalElevation = if (isActive) 2.dp else 0.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
-            .testTag("podcast_turn_card_${turn.index}")
+            .testTag("podcast_chapter_row_${turn.index}")
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = hostContainer
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(hostContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = turn.host.displayName.take(1),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Text(
+                    text = turn.timestampLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = turn.host.displayName,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "· ${turn.voiceId}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = sacredColors.subtleText
-                        )
-                    }
-                    Text(
-                        text = turn.sectionLabel,
-                        style = MaterialTheme.typography.labelMedium,
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = turn.sectionLabel,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Voice: ${turn.host.displayName}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = hostColor
+                )
+            }
+
+            when {
+                isSynthesizing -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
                         color = hostColor
                     )
                 }
-
-                when {
-                    isSynthesizing -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = hostColor
-                        )
-                    }
-                    isPlaying -> {
-                        Icon(
-                            imageVector = Icons.Rounded.GraphicEq,
-                            contentDescription = stringResource(R.string.podcast_status_playing),
-                            tint = hostColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    isCached -> {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = stringResource(R.string.podcast_cached_segment_desc),
-                            tint = sacredColors.sage,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                isPlaying -> {
+                    Icon(
+                        imageVector = Icons.Rounded.GraphicEq,
+                        contentDescription = stringResource(R.string.podcast_status_playing),
+                        tint = hostColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                isCached -> {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = stringResource(R.string.podcast_offline_ready),
+                        tint = sacredColors.sage,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                else -> {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.podcast_play),
+                        tint = sacredColors.subtleText,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
-
-            Text(
-                text = turn.spokenText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
         }
     }
 }
 
 @Composable
-private fun PodcastReflectionCard(episode: WeeklyPodcastEpisode) {
+private fun DailySacredStepReferenceCard(track: PlayablePodcastTrack.DailyEpisode) {
     val sacredColors = LocalSacredColors.current
+    val step = track.daily.sacredStep
+
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, sacredColors.hairline),
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("podcast_reflection_card")
+            .testTag("podcast_daily_step_card")
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = stringResource(R.string.podcast_reflection_questions_title),
+                text = stringResource(R.string.podcast_sacred_step_summary_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            episode.reflectionQuestions.forEachIndexed { idx, question ->
-                Text(
-                    text = "${idx + 1}. $question",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+
+            StepSummaryItem(
+                label = stringResource(R.string.step_label_scripture),
+                body = step.scriptureReference
+            )
+            StepSummaryItem(
+                label = stringResource(R.string.step_label_truth),
+                body = step.truth
+            )
+            StepSummaryItem(
+                label = stringResource(R.string.step_label_embrace),
+                body = step.embraceAffirmation,
+                italic = true
+            )
+            StepSummaryItem(
+                label = stringResource(R.string.step_label_practice),
+                body = step.practiceAction
+            )
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = sacredColors.dawnGoldContainer,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.podcast_closing_prayer_label),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = sacredColors.dawnGold,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = step.closingPrayer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun StepSummaryItem(
+    label: String,
+    body: String,
+    italic: Boolean = false
+) {
+    val sacredColors = LocalSacredColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = sacredColors.dawnGold,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = body,
+            style = MaterialTheme.typography.bodyMedium,
+            fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun MonthlyRoadmapReferenceCard(track: PlayablePodcastTrack.MonthlyOrientation) {
+    val sacredColors = LocalSacredColors.current
+    val playlist = track.playlist
+
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, sacredColors.hairline),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("podcast_monthly_roadmap_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.podcast_monthly_roadmap_title, playlist.monthName),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
             Surface(
                 shape = MaterialTheme.shapes.small,
                 color = sacredColors.dawnGoldContainer,
@@ -769,18 +949,52 @@ private fun PodcastReflectionCard(episode: WeeklyPodcastEpisode) {
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.podcast_next_week_label),
+                        text = stringResource(R.string.podcast_anchor_scripture_label),
                         style = MaterialTheme.typography.labelSmall,
-                        color = sacredColors.dawnGold
+                        color = sacredColors.dawnGold,
+                        fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = episode.nextWeekTitle,
+                        text = playlist.themeScripture,
                         style = MaterialTheme.typography.titleSmall,
                         fontStyle = FontStyle.Italic,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
+
+            playlist.weeksOverview.forEach { week ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = sacredColors.warmCard
+                    ) {
+                        Text(
+                            text = "WK ${week.weekNumber}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = sacredColors.dawnGold,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Text(
+                        text = week.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
         }
     }
+}
+
+fun formatAudioDuration(ms: Long): String {
+    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return String.format(Locale.US, "%02d:%02d", minutes, seconds)
 }

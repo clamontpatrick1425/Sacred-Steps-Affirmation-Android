@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.util.SacredCalendar
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.concurrent.TimeUnit
@@ -19,7 +20,7 @@ data class StoredPreferences(
     val isPremiumUnlocked: Boolean = false,
     val userEmail: String = "",
     val userName: String = "",
-    val currentDay: Int = 1,
+    val currentDay: Int = SacredCalendar.today().dayOfYear365,
     val notificationsEnabled: Boolean = false,
     val reminderHour: Int = 8,
     val reminderMinute: Int = 0,
@@ -57,7 +58,7 @@ class UserPreferencesRepository(private val context: Context) {
             isPremiumUnlocked = prefs[Keys.IS_PREMIUM_UNLOCKED] ?: false,
             userEmail = prefs[Keys.USER_EMAIL] ?: "",
             userName = prefs[Keys.USER_NAME] ?: "",
-            currentDay = (prefs[Keys.CURRENT_DAY] ?: 1).coerceIn(1, 365),
+            currentDay = (prefs[Keys.CURRENT_DAY] ?: SacredCalendar.today().dayOfYear365).coerceIn(1, 365),
             notificationsEnabled = prefs[Keys.NOTIFICATIONS_ENABLED] ?: false,
             reminderHour = prefs[Keys.REMINDER_HOUR] ?: 8,
             reminderMinute = prefs[Keys.REMINDER_MINUTE] ?: 0,
@@ -71,11 +72,13 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun recordAppOpen() {
         val todayEpochDay = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis())
+        val todayCalendarDay = SacredCalendar.today().dayOfYear365
         context.dataStore.edit { prefs ->
             val previous = prefs[Keys.LAST_OPENED_EPOCH_DAY] ?: 0L
             val returningAfterGap = previous > 0L && (todayEpochDay - previous) > 1L
             prefs[Keys.RETURNING_AFTER_GAP] = returningAfterGap
             prefs[Keys.LAST_OPENED_EPOCH_DAY] = todayEpochDay
+            prefs[Keys.CURRENT_DAY] = todayCalendarDay
         }
     }
 

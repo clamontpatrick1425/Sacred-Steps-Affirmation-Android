@@ -8,19 +8,26 @@
     <string name="nav_journey">Journey</string>
     <string name="nav_settings">Settings</string>
 
-    <!-- Weekly Podcasts -->
-    <string name="podcast_hero_eyebrow">%1$d WEEKLY EPISODES · MURF STUDIO VOICES</string>
-    <string name="podcast_hero_title">Weekly Podcasts in Grace</string>
-    <string name="podcast_hero_subtitle">Two alternating voices walk you through each week\'s Scripture, Truth, Affirmation, Sacred Steps, and reflection questions.</string>
-    <string name="podcast_this_week_spotlight">THIS WEEK\'S EPISODE · WEEK %1$d</string>
+    <!-- Monthly Orientation & Daily Podcasts -->
+    <string name="podcast_hero_eyebrow">%1$d MONTHLY · %2$d DAILY · %3$d TRACKS</string>
+    <string name="podcast_hero_title">Audio Sanctuary in Grace</string>
+    <string name="podcast_hero_subtitle">Twelve monthly orientation podcasts under 10 minutes paired with 365 three-and-a-half-minute daily Sacred S.T.E.P. episodes.</string>
+    <string name="podcast_today_spotlight_label">TODAY\'S DAILY PODCAST · %1$s · %2$s</string>
+    <string name="podcast_today_chip">Today</string>
     <string name="podcast_listen_now">Listen Now</string>
-    <string name="podcast_filter_all">All 52 Weeks</string>
-    <string name="podcast_all_52_weeks_title">All 52 Weekly Episodes</string>
-    <string name="podcast_month_episodes_title">%1$s Episodes</string>
-    <string name="podcast_episode_count_label">%1$d episodes</string>
-    <string name="podcast_play_week_desc">Play Week %1$d: %2$s</string>
-    <string name="podcast_back_to_episodes">Back to weekly podcast list</string>
-    <string name="podcast_all_episodes">All Weeks</string>
+    <string name="podcast_monthly_orientation_badge">MONTHLY ORIENTATION · %1$s · %2$s (UNDER %3$d MIN)</string>
+    <string name="podcast_month_daily_title">%1$s Daily Podcasts</string>
+    <string name="podcast_daily_count_label">%1$d daily episodes</string>
+    <string name="podcast_play_monthly_desc">Play %1$s Monthly Orientation podcast</string>
+    <string name="podcast_play_daily_desc">Play %1$s daily podcast: %2$s</string>
+    <string name="podcast_back_to_episodes">Back to audio library</string>
+    <string name="podcast_all_episodes">Audio Library</string>
+    <string name="podcast_minimize_player">Minimize</string>
+    <string name="podcast_minimize_player_desc">Minimize player to bottom bar while audio continues</string>
+    <string name="podcast_mini_expand_desc">Expand audio player</string>
+    <string name="podcast_mini_close_desc">Stop playback and close mini player</string>
+    <string name="podcast_rewind_15">Rewind 15 seconds</string>
+    <string name="podcast_forward_15">Forward 15 seconds</string>
     <string name="podcast_swap_voices_desc">Swap which alternating host opens this episode</string>
     <string name="podcast_lead_voice_label">Lead: %1$s</string>
     <string name="podcast_alternating_voices_badge">Alternating Voices</string>
@@ -29,21 +36,22 @@
     <string name="podcast_status_paused">Paused</string>
     <string name="podcast_status_error">Retry</string>
     <string name="podcast_status_ready">Ready</string>
-    <string name="podcast_prev_segment">Previous segment</string>
-    <string name="podcast_next_segment">Next segment</string>
+    <string name="podcast_prev_segment">Previous chapter</string>
+    <string name="podcast_next_segment">Next chapter</string>
     <string name="podcast_play">Play podcast</string>
     <string name="podcast_pause">Pause podcast</string>
-    <string name="podcast_cached_count">%1$d / %2$d segments cached</string>
+    <string name="podcast_cached_count">%1$d / %2$d chapters cached</string>
     <string name="podcast_offline_ready">Offline Ready</string>
     <string name="podcast_preparing_percent">Preparing %1$d%%</string>
     <string name="podcast_prepare_full_episode">Prepare Offline</string>
-    <string name="podcast_transcript_title">Alternating Host Script</string>
-    <string name="podcast_turn_counter">Segment %1$d of %2$d</string>
-    <string name="podcast_cached_segment_desc">Cached for offline playback</string>
-    <string name="podcast_reflection_questions_title">Weekly Reflection Questions</string>
-    <string name="podcast_next_week_label">NEXT WEEK\'S JOURNEY</string>
+    <string name="podcast_chapters_title">Episode Chapters</string>
+    <string name="podcast_chapter_counter">Chapter %1$d of %2$d</string>
+    <string name="podcast_sacred_step_summary_title">Today\'s Sacred S.T.E.P.</string>
+    <string name="podcast_closing_prayer_label">CLOSING PRAYER</string>
+    <string name="podcast_monthly_roadmap_title">%1$s Transformation Roadmap</string>
+    <string name="podcast_anchor_scripture_label">ANCHOR SCRIPTURE</string>
     <string name="podcast_murf_setup_title">Connect Murf.ai Voice Key</string>
-    <string name="podcast_murf_setup_body">Add MURF_API_KEY in the Secrets panel in AI Studio to synthesize studio-quality alternating voices. You can read every week\'s full script below right now.</string>
+    <string name="podcast_murf_setup_body">Add MURF_API_KEY in the Secrets panel in AI Studio to stream alternating studio voices for all 12 monthly orientation and 365 daily podcasts.</string>
 
     <!-- Grounding / SOS -->
     <string name="action_ground_yourself">Breathe</string>
@@ -78,12 +86,20 @@
     <string name="unlock_error_invalid_email">Please enter a valid email address so we can send your Prayer Guide.</string>
     <string name="unlock_success_message">All 365 days are open to you. Your 30-Day Redemption Prayer Guide is on its way.</string>
 
-    <!-- Journey Screen -->
+    <!-- Journey Screen & 12 Monthly Transformation Journals -->
     <string name="journey_tab_calendar">365 Days</string>
-    <string name="journey_tab_workbooks">4 Workbooks</string>
+    <string name="journey_tab_journals">12 Journals</string>
     <string name="days_walked_label">Days Walked in Grace</string>
-    <string name="shadows_trauma_notice">Go at your own pace. If any memory feels heavy, tap Breathe at the top and step away without guilt.</string>
-    <string name="new_creation_notice">This space celebrates what grace is building in you. No looking backward in shame.</string>
+    <string name="monthly_journals_intro_title">12 Monthly Transformation Journals</string>
+    <string name="monthly_journals_intro_body">Each month pairs its theme with daily Scripture, Sacred S.T.E.P. guidance, reflection prompts, prayers, and your end-of-month declaration.</string>
+    <string name="monthly_journal_back_desc">Back to 12 monthly journals</string>
+    <string name="monthly_journal_all_months">All 12 Journals</string>
+    <string name="monthly_journal_tab_welcome">Welcome</string>
+    <string name="monthly_journal_tab_daily">Daily Pages</string>
+    <string name="monthly_journal_tab_closing">End of Month</string>
+    <string name="monthly_journal_save_button">Save Reflection</string>
+    <string name="monthly_journal_support_title">My Support Plan</string>
+    <string name="monthly_journal_support_crisis">Crisis support is always available: Call or text 988 (Suicide &amp; Crisis Lifeline) or SAMHSA National Helpline at 1-800-662-4357.</string>
 
     <!-- Settings Screen -->
     <string name="settings_notifications_title">Daily Grace Reminder</string>
@@ -92,7 +108,7 @@
     <string name="settings_export_share">Share Journal Text</string>
     <string name="settings_export_save_file">Save Journal to File</string>
     <string name="settings_disclaimer_title">Care &amp; Support</string>
-    <string name="settings_disclaimer_body">Sacred Steps to Redemption is a faith-based recovery companion inspired by C. Lamont Patrick\'s book and four workbooks. It does not replace medical care, licensed therapy, or a trusted sponsor, and never promises guaranteed sobriety. You are worth honest support.</string>
+    <string name="settings_disclaimer_body">Sacred Steps to Redemption is a faith-based recovery companion inspired by C. Lamont Patrick\'s 365 Biblical Affirmations and 12 Monthly Transformation Journals. It does not replace medical care, licensed therapy, or a trusted sponsor, and never promises guaranteed sobriety. You are worth honest support.</string>
     <string name="notification_channel_name">Daily Sacred Steps</string>
     <string name="notification_channel_desc">Gentle daily reminders for your Sacred S.T.E.P. reading and reflection</string>
     <string name="notification_title">Your sacred step for today is ready</string>

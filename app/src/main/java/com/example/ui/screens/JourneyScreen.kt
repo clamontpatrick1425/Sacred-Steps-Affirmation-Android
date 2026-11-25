@@ -20,22 +20,20 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.EditNote
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -45,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,30 +54,51 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.domain.model.Affirmation
 import com.example.domain.model.UserProgress
-import com.example.domain.model.WorkbookModule
-import com.example.ui.theme.AccentScriptStyle
+import com.example.journal.MonthlyTransformationJournal
 import com.example.ui.theme.LocalSacredColors
+import com.example.util.SacredCalendar
 
 @Composable
 fun JourneyScreen(
     affirmations: List<Affirmation>,
     userProgress: UserProgress,
     journaledDays: Set<Int>,
-    workbookModules: List<WorkbookModule>,
-    workbookNotes: Map<String, String>,
+    monthlyJournals: List<MonthlyTransformationJournal>,
+    monthlyJournalResponses: Map<String, String>,
     onSelectDay: (Int) -> Unit,
-    onSaveWorkbookNote: (moduleId: String, promptKey: String, content: String) -> Unit,
+    onSaveMonthlyJournalResponse: (monthNumber: Int, entryKey: String, content: String) -> Unit,
     onOpenUnlock: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val todayInfo = remember { SacredCalendar.today() }
     var selectedSection by rememberSaveable { mutableIntStateOf(0) }
-    var selectedMonth by rememberSaveable { mutableIntStateOf(1) }
-    val sacredColors = LocalSacredColors.current
+    var selectedMonth by rememberSaveable { mutableIntStateOf(todayInfo.monthNumber) }
+    var openedJournalMonth by rememberSaveable { mutableStateOf<Int?>(null) }
+    val monthRowState = rememberLazyListState(
+        initialFirstVisibleItemIndex = (todayInfo.monthNumber - 1).coerceAtLeast(0)
+    )
 
+    val openedJournal = openedJournalMonth?.let { monthNum ->
+        monthlyJournals.firstOrNull { it.monthNumber == monthNum }
+    }
+    if (openedJournal != null) {
+        MonthlyJournalDetailView(
+            journal = openedJournal,
+            responses = monthlyJournalResponses,
+            onSaveResponse = onSaveMonthlyJournalResponse,
+            onBack = { openedJournalMonth = null },
+            modifier = modifier
+        )
+        return
+    }
+
+    val sacredColors = LocalSacredColors.current
     val monthNames = listOf(
         1 to "Jan", 2 to "Feb", 3 to "Mar", 4 to "Apr",
         5 to "May", 6 to "Jun", 7 to "Jul", 8 to "Aug",
@@ -120,9 +140,9 @@ fun JourneyScreen(
                         selected = selectedSection == 1,
                         onClick = { selectedSection = 1 },
                         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                        modifier = Modifier.testTag("journey_tab_workbooks")
+                        modifier = Modifier.testTag("journey_tab_journals")
                     ) {
-                        Text(text = stringResource(R.string.journey_tab_workbooks))
+                        Text(text = stringResource(R.string.journey_tab_journals))
                     }
                 }
             }
@@ -130,6 +150,7 @@ fun JourneyScreen(
             if (selectedSection == 0) {
                 item {
                     LazyRow(
+                        state = monthRowState,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(monthNames) { (monthNum, shortName) ->
@@ -153,8 +174,12 @@ fun JourneyScreen(
                 }
 
                 items(filteredDays, key = { it.dayNumber }) { item ->
-                    val isCurrent = item.dayNumber == userProgress.currentDay
+                    val isToday = item.dayNumber == todayInfo.dayOfYear365
+                    val isCurrent = item.dayNumber == userProgress.currentDay || isToday
                     val hasJournal = item.dayNumber in journaledDays
+                    val dayDateInfo = remember(item.dayNumber) {
+                        SacredCalendar.fromDayOfYear365(item.dayNumber)
+                    }
 
                     Surface(
                         shape = MaterialTheme.shapes.medium,
@@ -200,9 +225,13 @@ fun JourneyScreen(
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Column {
                                     Text(
-                                        text = "Week ${item.weekNumber} · ${item.monthName}",
+                                        text = buildString {
+                                            if (isToday) append("Today · ")
+                                            append("${dayDateInfo.weekdayShort}, ${dayDateInfo.monthShortName} ${dayDateInfo.dayOfMonth} · Week ${item.weekNumber}")
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = sacredColors.subtleText
+                                        color = if (isToday) sacredColors.dawnGold else sacredColors.subtleText,
+                                        fontWeight = if (isToday) FontWeight.SemiBold else FontWeight.Normal
                                     )
                                     Text(
                                         text = item.title,
@@ -244,11 +273,52 @@ fun JourneyScreen(
                     }
                 }
             } else {
-                items(workbookModules, key = { it.id.name }) { module ->
-                    WorkbookAccordionCard(
-                        module = module,
-                        notes = workbookNotes,
-                        onSaveNote = onSaveWorkbookNote
+                item(key = "monthly_journals_intro") {
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = sacredColors.warmCard,
+                        border = BorderStroke(1.dp, sacredColors.dawnGold.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AutoStories,
+                                    contentDescription = null,
+                                    tint = sacredColors.dawnGold,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.monthly_journals_intro_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.monthly_journals_intro_body),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = sacredColors.subtleText
+                            )
+                        }
+                    }
+                }
+
+                items(monthlyJournals, key = { "monthly_journal_${it.monthNumber}" }) { journal ->
+                    val writtenCount = monthlyJournalResponses.count { (key, value) ->
+                        key.startsWith("${journal.monthNumber}:") && value.isNotBlank()
+                    }
+                    MonthlyJournalCard(
+                        journal = journal,
+                        isCurrentMonth = journal.monthNumber == todayInfo.monthNumber,
+                        writtenEntriesCount = writtenCount,
+                        onOpen = { openedJournalMonth = journal.monthNumber }
                     )
                 }
             }
@@ -361,159 +431,101 @@ private fun JourneyHeroCard(
 }
 
 @Composable
-private fun WorkbookAccordionCard(
-    module: WorkbookModule,
-    notes: Map<String, String>,
-    onSaveNote: (moduleId: String, promptKey: String, content: String) -> Unit
+private fun MonthlyJournalCard(
+    journal: MonthlyTransformationJournal,
+    isCurrentMonth: Boolean,
+    writtenEntriesCount: Int,
+    onOpen: () -> Unit
 ) {
     val sacredColors = LocalSacredColors.current
-    var expanded by rememberSaveable(module.id.name) { mutableStateOf(false) }
-
     Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, sacredColors.hairline)
+        shape = MaterialTheme.shapes.large,
+        color = if (isCurrentMonth) sacredColors.warmCard else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = if (isCurrentMonth) 1.5.dp else 1.dp,
+            color = if (isCurrentMonth) sacredColors.dawnGold else sacredColors.hairline
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .clickable(onClick = onOpen)
+            .testTag("monthly_journal_card_${journal.monthNumber}")
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(20.dp)
-                    .testTag("workbook_${module.id.name.lowercase()}"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (writtenEntriesCount > 0) sacredColors.sageContainer else sacredColors.dawnGoldContainer
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = when {
-                                module.isCelebratoryOnly -> Icons.Rounded.AutoAwesome
-                                module.traumaInformedNotice != null -> Icons.Rounded.Spa
-                                else -> Icons.Rounded.Book
-                            },
-                            contentDescription = null,
-                            tint = if (module.isCelebratoryOnly) sacredColors.dawnGold else sacredColors.sage,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "${module.workbookNumber} · ${module.subtitle}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (module.isCelebratoryOnly) sacredColors.dawnGold else sacredColors.sage
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = module.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        text = journal.monthName.take(3).uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (writtenEntriesCount > 0) sacredColors.sage else sacredColors.dawnGold,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = module.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = sacredColors.subtleText
+                        text = journal.monthNumber.toString().padStart(2, '0'),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                Icon(
-                    imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                    contentDescription = if (expanded) "Collapse workbook" else "Expand workbook",
-                    tint = MaterialTheme.colorScheme.primary
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = buildString {
+                        if (isCurrentMonth) append("Current Month · ")
+                        append("${journal.monthName} · ${journal.days.size} Days · ${journal.weeks.size} Weeks")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = sacredColors.dawnGold,
+                    fontWeight = FontWeight.SemiBold
                 )
-            }
-
-            if (expanded) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    module.traumaInformedNotice?.let { notice ->
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = sacredColors.sageContainer
-                        ) {
-                            Text(
-                                text = notice,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
-
-                    if (module.isCelebratoryOnly) {
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = sacredColors.dawnGoldContainer
-                        ) {
-                            Text(
-                                text = stringResource(R.string.new_creation_notice),
-                                style = AccentScriptStyle,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
-
-                    module.prompts.forEach { prompt ->
-                        val compositeKey = "${module.id.name}:${prompt.key}"
-                        val savedValue = notes[compositeKey] ?: ""
-                        var draft by rememberSaveable(compositeKey, savedValue) {
-                            mutableStateOf(savedValue)
-                        }
-
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = sacredColors.warmCard,
-                            border = BorderStroke(1.dp, sacredColors.hairline)
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text(
-                                    text = prompt.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = prompt.prompt,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                OutlinedTextField(
-                                    value = draft,
-                                    onValueChange = { draft = it },
-                                    placeholder = { Text(prompt.placeholder) },
-                                    minLines = 2,
-                                    maxLines = 5,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            onSaveNote(module.id.name, prompt.key, draft)
-                                        },
-                                        modifier = Modifier.height(48.dp),
-                                        shape = MaterialTheme.shapes.small
-                                    ) {
-                                        Text(
-                                            text = "Save Note",
-                                            style = MaterialTheme.typography.labelLarge
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                Text(
+                    text = journal.themeTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = journal.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sacredColors.subtleText,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (writtenEntriesCount > 0) {
+                    Text(
+                        text = "$writtenEntriesCount private reflection${if (writtenEntriesCount == 1) "" else "s"} saved",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = sacredColors.sage,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = "Open ${journal.monthName} ${journal.themeTitle} Journal",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

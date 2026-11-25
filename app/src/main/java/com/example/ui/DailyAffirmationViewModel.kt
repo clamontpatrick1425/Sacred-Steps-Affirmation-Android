@@ -4,15 +4,16 @@ import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.data.local.WorkbookSeedData
 import com.example.data.repository.AffirmationRepository
 import com.example.data.repository.JournalRepository
 import com.example.domain.model.Affirmation
 import com.example.domain.model.HeartMood
 import com.example.domain.model.JournalEntry
 import com.example.domain.model.UserProgress
-import com.example.domain.model.WorkbookModule
+import com.example.journal.MonthlyJournalRepository
+import com.example.journal.MonthlyTransformationJournal
 import com.example.notifications.NotificationScheduler
+import com.example.util.SacredCalendar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,8 +31,8 @@ data class SacredStepsUiState(
     val journalEntriesForCurrentDay: List<JournalEntry> = emptyList(),
     val allJournalEntries: List<JournalEntry> = emptyList(),
     val journaledDays: Set<Int> = emptySet(),
-    val workbookModules: List<WorkbookModule> = WorkbookSeedData.modules,
-    val workbookNotes: Map<String, String> = emptyMap(),
+    val monthlyJournals: List<MonthlyTransformationJournal> = emptyList(),
+    val monthlyJournalResponses: Map<String, String> = emptyMap(),
     val showGroundingSheet: Boolean = false,
     val showUnlockDialog: Boolean = false,
     val pendingUnlockTargetDay: Int? = null,
@@ -52,13 +53,23 @@ private data class ModalUiState(
 class DailyAffirmationViewModel(
     private val affirmationRepository: AffirmationRepository,
     private val journalRepository: JournalRepository,
+    private val monthlyJournalRepository: MonthlyJournalRepository,
     private val notificationScheduler: NotificationScheduler
 ) : ViewModel() {
 
     private val modalState = MutableStateFlow(ModalUiState())
+    private val monthlyJournalsState = MutableStateFlow<List<MonthlyTransformationJournal>>(emptyList())
 
     init {
         fetchTodayAffirmation()
+        loadMonthlyJournals()
+    }
+
+    private fun loadMonthlyJournals() {
+        viewModelScope.launch {
+            runCatching { monthlyJournalRepository.loadAllJournals() }
+                .onSuccess { journals -> monthlyJournalsState.value = journals }
+        }
     }
 
     private val coreDataFlow = combine(
@@ -66,21 +77,22 @@ class DailyAffirmationViewModel(
         affirmationRepository.userProgress,
         journalRepository.allJournalEntries,
         journalRepository.journaledDays,
-        journalRepository.workbookNotesMap
-    ) { affirmations, progress, entries, journaledDays, workbookNotes ->
+        journalRepository.monthlyJournalResponsesMap
+    ) { affirmations, progress, entries, journaledDays, monthlyResponses ->
         CoreDataSnapshot(
             affirmations = affirmations,
             progress = progress,
             entries = entries,
             journaledDays = journaledDays,
-            workbookNotes = workbookNotes
+            monthlyResponses = monthlyResponses
         )
     }
 
     val uiState: StateFlow<SacredStepsUiState> = combine(
         coreDataFlow,
+        monthlyJournalsState,
         modalState
-    ) { core, modals ->
+    ) { core, monthlyJournals, modals ->
         val selectedDay = core.progress.currentDay.coerceIn(1, 365)
         val currentAffirmation = core.affirmations.find { it.dayNumber == selectedDay }
             ?: core.affirmations.firstOrNull()
@@ -95,8 +107,8 @@ class DailyAffirmationViewModel(
             journalEntriesForCurrentDay = entriesForDay,
             allJournalEntries = core.entries,
             journaledDays = core.journaledDays,
-            workbookModules = WorkbookSeedData.modules,
-            workbookNotes = core.workbookNotes,
+            monthlyJournals = monthlyJournals,
+            monthlyJournalResponses = core.monthlyResponses,
             showGroundingSheet = modals.showGroundingSheet,
             showUnlockDialog = modals.showUnlockDialog,
             pendingUnlockTargetDay = modals.pendingUnlockTargetDay,
@@ -117,7 +129,7 @@ class DailyAffirmationViewModel(
     }
 
     fun isDayLocked(dayNumber: Int): Boolean {
-        return dayNumber > 7 && !uiState.value.userProgress.isPremiumUnlocked
+        return !SacredCalendar.isDayInFreeWindow(dayNumber) && !uiState.value.userProgress.isPremiumUnlocked
     }
 
     fun selectDay(dayNumber: Int, onUnlockedNavigation: (() -> Unit)? = null) {
@@ -173,11 +185,11 @@ class DailyAffirmationViewModel(
         }
     }
 
-    fun saveWorkbookNote(moduleId: String, promptKey: String, content: String) {
+    fun saveMonthlyJournalResponse(monthNumber: Int, entryKey: String, content: String) {
         viewModelScope.launch {
-            journalRepository.saveWorkbookNote(moduleId, promptKey, content)
+            journalRepository.saveMonthlyJournalResponse(monthNumber, entryKey, content)
             modalState.update {
-                it.copy(snackbarMessage = "Workbook reflection saved privately.")
+                it.copy(snackbarMessage = "Journal reflection saved privately.")
             }
         }
     }
@@ -290,13 +302,14 @@ class DailyAffirmationViewModel(
         val progress: UserProgress,
         val entries: List<JournalEntry>,
         val journaledDays: Set<Int>,
-        val workbookNotes: Map<String, String>
+        val monthlyResponses: Map<String, String>
     )
 
     companion object {
         fun provideFactory(
             affirmationRepository: AffirmationRepository,
             journalRepository: JournalRepository,
+            monthlyJournalRepository: MonthlyJournalRepository,
             notificationScheduler: NotificationScheduler
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -304,6 +317,7 @@ class DailyAffirmationViewModel(
                 return DailyAffirmationViewModel(
                     affirmationRepository = affirmationRepository,
                     journalRepository = journalRepository,
+                    monthlyJournalRepository = monthlyJournalRepository,
                     notificationScheduler = notificationScheduler
                 ) as T
             }

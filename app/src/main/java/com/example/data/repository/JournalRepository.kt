@@ -3,8 +3,8 @@ package com.example.data.repository
 import com.example.data.local.AffirmationDao
 import com.example.data.local.JournalEntryDao
 import com.example.data.local.JournalEntryEntity
-import com.example.data.local.WorkbookNoteDao
-import com.example.data.local.WorkbookNoteEntity
+import com.example.data.local.MonthlyJournalResponseDao
+import com.example.data.local.MonthlyJournalResponseEntity
 import com.example.domain.model.JournalEntry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -15,7 +15,7 @@ import java.util.Locale
 
 class JournalRepository(
     private val journalEntryDao: JournalEntryDao,
-    private val workbookNoteDao: WorkbookNoteDao,
+    private val monthlyJournalResponseDao: MonthlyJournalResponseDao,
     private val affirmationDao: AffirmationDao
 ) {
     val allJournalEntries: Flow<List<JournalEntry>> = journalEntryDao.observeAllJournalEntries().map { list ->
@@ -30,9 +30,10 @@ class JournalRepository(
 
     val journaledDays: Flow<Set<Int>> = journalEntryDao.observeJournaledDays().map { it.toSet() }
 
-    val workbookNotesMap: Flow<Map<String, String>> = workbookNoteDao.observeAllWorkbookNotes().map { list ->
-        list.associate { "${it.moduleId}:${it.promptKey}" to it.content }
-    }
+    val monthlyJournalResponsesMap: Flow<Map<String, String>> =
+        monthlyJournalResponseDao.observeAllResponses().map { list ->
+            list.associate { "${it.monthNumber}:${it.entryKey}" to it.content }
+        }
 
     suspend fun saveJournalEntry(dayNumber: Int, entryText: String, heartMood: String) {
         val cleaned = entryText.trim()
@@ -51,11 +52,11 @@ class JournalRepository(
         journalEntryDao.deleteJournalEntry(id)
     }
 
-    suspend fun saveWorkbookNote(moduleId: String, promptKey: String, content: String) {
-        workbookNoteDao.upsertWorkbookNote(
-            WorkbookNoteEntity(
-                moduleId = moduleId,
-                promptKey = promptKey,
+    suspend fun saveMonthlyJournalResponse(monthNumber: Int, entryKey: String, content: String) {
+        monthlyJournalResponseDao.upsertResponse(
+            MonthlyJournalResponseEntity(
+                monthNumber = monthNumber,
+                entryKey = entryKey,
                 content = content,
                 updatedAt = System.currentTimeMillis()
             )
@@ -65,8 +66,12 @@ class JournalRepository(
     suspend fun buildExportableJournalText(): String {
         val entries = journalEntryDao.observeAllJournalEntries().first()
         val affirmations = affirmationDao.observeAllAffirmations().first().associateBy { it.dayNumber }
-        val workbookNotes = workbookNoteDao.observeAllWorkbookNotes().first()
+        val monthlyResponses = monthlyJournalResponseDao.observeAllResponses().first()
         val dateFormat = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
+        val monthNames = listOf(
+            "", "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        )
 
         return buildString {
             appendLine("SACRED STEPS TO REDEMPTION — PRIVATE JOURNAL")
@@ -74,7 +79,7 @@ class JournalRepository(
             appendLine("==================================================")
             appendLine()
 
-            if (entries.isEmpty() && workbookNotes.none { it.content.isNotBlank() }) {
+            if (entries.isEmpty() && monthlyResponses.none { it.content.isNotBlank() }) {
                 appendLine("Your journal pages are still quiet and waiting for your first words.")
             } else {
                 if (entries.isNotEmpty()) {
@@ -92,12 +97,13 @@ class JournalRepository(
                     }
                 }
 
-                val nonEmptyNotes = workbookNotes.filter { it.content.isNotBlank() }
-                if (nonEmptyNotes.isNotEmpty()) {
-                    appendLine("COMPANION WORKBOOK NOTES")
-                    appendLine("------------------------")
-                    nonEmptyNotes.forEach { note ->
-                        appendLine("[${note.moduleId}] ${note.promptKey}")
+                val nonEmptyMonthly = monthlyResponses.filter { it.content.isNotBlank() }
+                if (nonEmptyMonthly.isNotEmpty()) {
+                    appendLine("MONTHLY TRANSFORMATION JOURNAL NOTES")
+                    appendLine("------------------------------------")
+                    nonEmptyMonthly.forEach { note ->
+                        val monthLabel = monthNames.getOrElse(note.monthNumber) { "Month ${note.monthNumber}" }
+                        appendLine("[$monthLabel] ${note.entryKey}")
                         appendLine(note.content)
                         appendLine()
                     }

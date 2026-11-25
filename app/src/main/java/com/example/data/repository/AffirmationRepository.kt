@@ -8,6 +8,7 @@ import com.example.data.local.UserPreferencesRepository
 import com.example.data.remote.EspWebhookClient
 import com.example.domain.model.Affirmation
 import com.example.domain.model.UserProgress
+import com.example.util.SacredCalendar
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -57,7 +58,7 @@ class AffirmationRepository(
     }
 
     suspend fun isDayLocked(dayNumber: Int): Boolean {
-        if (dayNumber <= 7) return false
+        if (SacredCalendar.isDayInFreeWindow(dayNumber)) return false
         return !preferencesRepository.preferencesFlow.first().isPremiumUnlocked
     }
 
@@ -112,7 +113,7 @@ class AffirmationRepository(
             affirmationText = affirmationText,
             practiceAction = practiceAction,
             reflectionPrompt = reflectionPrompt,
-            isLocked = dayNumber > 7 && !isPremiumUnlocked,
+            isLocked = !SacredCalendar.isDayInFreeWindow(dayNumber) && !isPremiumUnlocked,
             isCompleted = isCompleted
         )
     }

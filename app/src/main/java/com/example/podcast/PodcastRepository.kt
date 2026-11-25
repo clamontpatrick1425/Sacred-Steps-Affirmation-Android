@@ -16,19 +16,23 @@ class PodcastRepository(
     }
 
     @Volatile
-    private var cachedEpisodes: List<WeeklyPodcastEpisode>? = null
+    private var cachedManifest: AudioPlaylistManifest? = null
 
-    suspend fun loadAllEpisodes(): List<WeeklyPodcastEpisode> = withContext(Dispatchers.IO) {
-        cachedEpisodes?.let { return@withContext it }
+    suspend fun loadManifest(): AudioPlaylistManifest = withContext(Dispatchers.IO) {
+        cachedManifest?.let { return@withContext it }
 
         val json = context.assets.open(ASSET_FILE_NAME).bufferedReader().use { it.readText() }
-        val adapter = moshi.adapter(WeeklyPodcastCatalog::class.java)
-        val parsed = adapter.fromJson(json)?.episodes.orEmpty().sortedBy { it.weekNumber }
-        cachedEpisodes = parsed
-        parsed
+        val adapter = moshi.adapter(AudioPlaylistManifest::class.java)
+        val parsed = adapter.fromJson(json)
+            ?: throw IllegalStateException("Failed to parse $ASSET_FILE_NAME")
+        val normalized = parsed.copy(
+            monthlyPlaylists = parsed.monthlyPlaylists.sortedBy { it.monthNumber }
+        )
+        cachedManifest = normalized
+        normalized
     }
 
     companion object {
-        const val ASSET_FILE_NAME = "weekly_podcasts.json"
+        const val ASSET_FILE_NAME = "sacred_steps_audio_playlist_manifest.json"
     }
 }

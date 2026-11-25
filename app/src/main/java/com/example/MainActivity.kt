@@ -25,11 +25,13 @@ class MainActivity : ComponentActivity() {
                 factory = DailyAffirmationViewModel.provideFactory(
                     affirmationRepository = appContainer.affirmationRepository,
                     journalRepository = appContainer.journalRepository,
+                    monthlyJournalRepository = appContainer.monthlyJournalRepository,
                     notificationScheduler = appContainer.notificationScheduler
                 )
             )
             val podcastViewModel: PodcastViewModel = viewModel(
                 factory = PodcastViewModel.provideFactory(
+                    appContext = applicationContext,
                     podcastRepository = appContainer.podcastRepository,
                     murfAudioRepository = appContainer.murfAudioRepository
                 )

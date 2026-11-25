@@ -1,8 +1,21 @@
 package com.example.podcast
 
+import android.content.ComponentName
+import android.content.Context
+import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.example.util.SacredCalendar
+import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,30 +24,47 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 
 data class PodcastUiState(
     val isLoadingCatalog: Boolean = true,
-    val episodes: List<WeeklyPodcastEpisode> = emptyList(),
-    val months: List<String> = emptyList(),
-    val selectedMonth: String? = null,
-    val selectedEpisode: WeeklyPodcastEpisode? = null,
+    val manifestInfo: ManifestInfo? = null,
+    val monthlyPlaylists: List<MonthlyAudioPlaylist> = emptyList(),
+    val selectedMonthNumber: Int = SacredCalendar.today().monthNumber,
+    val todayDayOfYear: Int = SacredCalendar.today().dayOfYear365,
+    val selectedTrack: PlayablePodcastTrack? = null,
+    val isFullPlayerExpanded: Boolean = false,
     val dialogueTurns: List<PodcastDialogueTurn> = emptyList(),
     val activeTurnIndex: Int = 0,
     val playbackStatus: PodcastPlaybackStatus = PodcastPlaybackStatus.IDLE,
+    val currentPositionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val playbackSpeed: Float = 1.0f,
     val leadHost: PodcastHost = PodcastHost.GRACE,
     val cachedTurnIndices: Set<Int> = emptySet(),
-    val isPreparingEpisode: Boolean = false,
+    val isPreparingTrack: Boolean = false,
     val prepareProgress: Float = 0f,
     val turnProgressFraction: Float = 0f,
     val isMurfConfigured: Boolean = false,
     val errorMessage: String? = null,
     val statusBanner: String? = null
 ) {
-    val filteredEpisodes: List<WeeklyPodcastEpisode>
-        get() = if (selectedMonth == null) {
-            episodes
-        } else {
-            episodes.filter { it.monthName.equals(selectedMonth, ignoreCase = true) }
+    val selectedMonthPlaylist: MonthlyAudioPlaylist?
+        get() = monthlyPlaylists.firstOrNull { it.monthNumber == selectedMonthNumber }
+            ?: monthlyPlaylists.firstOrNull()
+
+    val todayDailyTrack: PlayablePodcastTrack.DailyEpisode?
+        get() {
+            for (playlist in monthlyPlaylists) {
+                val match = playlist.dailyPodcasts.firstOrNull { it.dayOfYear == todayDayOfYear }
+                if (match != null) {
+                    return PlayablePodcastTrack.DailyEpisode(playlist = playlist, daily = match)
+                }
+            }
+            val firstMonth = monthlyPlaylists.firstOrNull() ?: return null
+            val firstDay = firstMonth.dailyPodcasts.firstOrNull() ?: return null
+            return PlayablePodcastTrack.DailyEpisode(playlist = firstMonth, daily = firstDay)
         }
 
     val activeTurn: PodcastDialogueTurn?
@@ -42,9 +72,9 @@ data class PodcastUiState(
 }
 
 class PodcastViewModel(
+    private val appContext: Context,
     private val podcastRepository: PodcastRepository,
-    private val murfAudioRepository: MurfAudioRepository,
-    private val audioPlayer: PodcastAudioPlayer = PodcastAudioPlayer()
+    private val murfAudioRepository: MurfAudioRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -54,25 +84,124 @@ class PodcastViewModel(
     )
     val uiState: StateFlow<PodcastUiState> = _uiState.asStateFlow()
 
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controllerDeferred = CompletableDeferred<MediaController>()
+    private var activeMediaController: MediaController? = null
+    private var playingBundledFullAudio: Boolean = false
+    private var activePlaySessionId: Long = 0L
+
     private var playbackJob: Job? = null
     private var prefetchJob: Job? = null
     private var progressJob: Job? = null
     private var prepareAllJob: Job? = null
 
-    init {
-        loadCatalog()
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            val current = _uiState.value
+            if (current.selectedTrack == null) return
+            if (isPlaying) {
+                val dur = activeMediaController?.duration?.coerceAtLeast(0L) ?: current.durationMs
+                val pos = activeMediaController?.currentPosition?.coerceAtLeast(0L) ?: current.currentPositionMs
+                _uiState.update {
+                    it.copy(
+                        playbackStatus = PodcastPlaybackStatus.PLAYING,
+                        durationMs = dur,
+                        currentPositionMs = pos,
+                        turnProgressFraction = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f,
+                        errorMessage = null
+                    )
+                }
+                startProgressTicker()
+            } else if (current.playbackStatus == PodcastPlaybackStatus.PLAYING) {
+                val state = activeMediaController?.playbackState
+                if (state != Player.STATE_ENDED && state != Player.STATE_IDLE) {
+                    progressJob?.cancel()
+                    _uiState.update { it.copy(playbackStatus = PodcastPlaybackStatus.PAUSED) }
+                }
+            }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val controller = activeMediaController ?: return
+            val dur = controller.duration.coerceAtLeast(0L)
+            val pos = controller.currentPosition.coerceAtLeast(0L)
+
+            when (playbackState) {
+                Player.STATE_READY -> {
+                    _uiState.update {
+                        it.copy(
+                            durationMs = dur,
+                            currentPositionMs = pos,
+                            turnProgressFraction = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+                        )
+                    }
+                }
+                Player.STATE_ENDED -> {
+                    progressJob?.cancel()
+                    handleSegmentCompleted()
+                }
+                else -> Unit
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            progressJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    playbackStatus = PodcastPlaybackStatus.ERROR,
+                    errorMessage = error.localizedMessage ?: "Audio playback error."
+                )
+            }
+        }
     }
 
-    private fun loadCatalog() {
+    init {
+        initMediaController()
+        loadAudioManifest()
+    }
+
+    private fun initMediaController() {
+        val sessionToken = SessionToken(
+            appContext,
+            ComponentName(appContext, PodcastPlaybackService::class.java)
+        )
+        val future = MediaController.Builder(appContext, sessionToken).buildAsync()
+        controllerFuture = future
+        future.addListener(
+            {
+                runCatching { future.get() }
+                    .onSuccess { controller ->
+                        activeMediaController = controller
+                        controller.addListener(playerListener)
+                        controller.setPlaybackSpeed(_uiState.value.playbackSpeed)
+                        if (!controllerDeferred.isCompleted) {
+                            controllerDeferred.complete(controller)
+                        }
+                    }
+            },
+            ContextCompat.getMainExecutor(appContext)
+        )
+    }
+
+    private suspend fun awaitMediaController(): MediaController? {
+        activeMediaController?.let { return it }
+        return withTimeoutOrNull(4_000L) {
+            controllerDeferred.await()
+        }
+    }
+
+    private fun loadAudioManifest() {
         viewModelScope.launch {
-            runCatching { podcastRepository.loadAllEpisodes() }
-                .onSuccess { episodes ->
-                    val orderedMonths = episodes.map { it.monthName }.distinct()
+            runCatching { podcastRepository.loadManifest() }
+                .onSuccess { manifest ->
+                    val today = SacredCalendar.today()
                     _uiState.update {
                         it.copy(
                             isLoadingCatalog = false,
-                            episodes = episodes,
-                            months = orderedMonths,
+                            manifestInfo = manifest.manifestInfo,
+                            monthlyPlaylists = manifest.monthlyPlaylists,
+                            selectedMonthNumber = today.monthNumber,
+                            todayDayOfYear = today.dayOfYear365,
                             isMurfConfigured = murfAudioRepository.isApiKeyConfigured(),
                             errorMessage = null
                         )
@@ -82,30 +211,48 @@ class PodcastViewModel(
                     _uiState.update {
                         it.copy(
                             isLoadingCatalog = false,
-                            errorMessage = err.message ?: "Unable to load weekly podcasts."
+                            errorMessage = err.message ?: "Unable to load audio playlist manifest."
                         )
                     }
                 }
         }
     }
 
-    fun selectMonthFilter(month: String?) {
-        _uiState.update { it.copy(selectedMonth = month) }
+    fun selectMonth(monthNumber: Int) {
+        _uiState.update { it.copy(selectedMonthNumber = monthNumber.coerceIn(1, 12)) }
     }
 
-    fun openEpisode(episode: WeeklyPodcastEpisode, autoPlay: Boolean = false) {
+    fun openTrack(track: PlayablePodcastTrack, autoPlay: Boolean = false) {
+        val current = _uiState.value
+        if (current.selectedTrack?.trackId == track.trackId && current.dialogueTurns.isNotEmpty()) {
+            _uiState.update { it.copy(isFullPlayerExpanded = true) }
+            if (autoPlay && current.playbackStatus != PodcastPlaybackStatus.PLAYING &&
+                current.playbackStatus != PodcastPlaybackStatus.SYNTHESIZING
+            ) {
+                togglePlayPause()
+            }
+            return
+        }
+
         stopPlaybackInternal()
-        val leadHost = _uiState.value.leadHost
-        val turns = PodcastScriptBuilder.buildDialogueTurns(episode, leadHost)
-        val cached = murfAudioRepository.getCachedTurnIndices(episode.weekNumber, turns)
+        prepareAllJob?.cancel()
+
+        val leadHost = current.leadHost
+        val turns = PodcastScriptBuilder.buildDialogueTurns(track, leadHost)
+        val cached = murfAudioRepository.getCachedTurnIndices(track.trackId, turns)
 
         _uiState.update {
             it.copy(
-                selectedEpisode = episode,
+                selectedTrack = track,
+                isFullPlayerExpanded = true,
                 dialogueTurns = turns,
                 activeTurnIndex = 0,
                 playbackStatus = PodcastPlaybackStatus.IDLE,
+                currentPositionMs = 0L,
+                durationMs = 0L,
                 cachedTurnIndices = cached,
+                isPreparingTrack = false,
+                prepareProgress = 0f,
                 turnProgressFraction = 0f,
                 errorMessage = null,
                 statusBanner = null
@@ -117,16 +264,36 @@ class PodcastViewModel(
         }
     }
 
-    fun closeEpisodePlayer() {
+    /**
+     * Minimizes the full player sheet into the persistent MiniPlayerBar while audio continues
+     * playing cleanly in the background via PodcastPlaybackService.
+     */
+    fun minimizePlayer() {
+        _uiState.update { it.copy(isFullPlayerExpanded = false) }
+    }
+
+    fun expandPlayer() {
+        if (_uiState.value.selectedTrack != null) {
+            _uiState.update { it.copy(isFullPlayerExpanded = true) }
+        }
+    }
+
+    /**
+     * Stops playback completely and dismisses both the full player and the MiniPlayerBar.
+     */
+    fun dismissPlayer() {
         stopPlaybackInternal()
         prepareAllJob?.cancel()
         _uiState.update {
             it.copy(
-                selectedEpisode = null,
+                selectedTrack = null,
+                isFullPlayerExpanded = false,
                 dialogueTurns = emptyList(),
                 activeTurnIndex = 0,
                 playbackStatus = PodcastPlaybackStatus.IDLE,
-                isPreparingEpisode = false,
+                currentPositionMs = 0L,
+                durationMs = 0L,
+                isPreparingTrack = false,
                 prepareProgress = 0f,
                 turnProgressFraction = 0f,
                 errorMessage = null,
@@ -136,12 +303,12 @@ class PodcastViewModel(
     }
 
     /**
-     * Switches which Murf voice opens the episode (Grace or Marcus) while keeping
-     * strict voice alternation across every single consecutive turn.
+     * Switches which Murf voice opens the track (Grace or Marcus) while keeping
+     * strict voice alternation across every chapter.
      */
     fun swapAlternatingLeadHost() {
         val nextLead = _uiState.value.leadHost.alternate()
-        val episode = _uiState.value.selectedEpisode
+        val track = _uiState.value.selectedTrack
         val wasPlaying = _uiState.value.playbackStatus == PodcastPlaybackStatus.PLAYING ||
             _uiState.value.playbackStatus == PodcastPlaybackStatus.SYNTHESIZING
         val currentIdx = _uiState.value.activeTurnIndex
@@ -149,16 +316,18 @@ class PodcastViewModel(
         stopPlaybackInternal()
         prepareAllJob?.cancel()
 
-        if (episode != null) {
-            val rebuiltTurns = PodcastScriptBuilder.buildDialogueTurns(episode, nextLead)
-            val cached = murfAudioRepository.getCachedTurnIndices(episode.weekNumber, rebuiltTurns)
+        if (track != null) {
+            val rebuiltTurns = PodcastScriptBuilder.buildDialogueTurns(track, nextLead)
+            val cached = murfAudioRepository.getCachedTurnIndices(track.trackId, rebuiltTurns)
             _uiState.update {
                 it.copy(
                     leadHost = nextLead,
                     dialogueTurns = rebuiltTurns,
                     cachedTurnIndices = cached,
                     playbackStatus = PodcastPlaybackStatus.IDLE,
-                    isPreparingEpisode = false,
+                    currentPositionMs = 0L,
+                    durationMs = 0L,
+                    isPreparingTrack = false,
                     prepareProgress = 0f,
                     turnProgressFraction = 0f,
                     statusBanner = "${nextLead.displayName} now opens, alternating with ${nextLead.alternate().displayName}."
@@ -179,16 +348,22 @@ class PodcastViewModel(
 
     fun togglePlayPause() {
         val state = _uiState.value
+        val controller = activeMediaController
         when (state.playbackStatus) {
             PodcastPlaybackStatus.PLAYING -> {
-                audioPlayer.pause()
+                controller?.pause()
                 progressJob?.cancel()
                 _uiState.update { it.copy(playbackStatus = PodcastPlaybackStatus.PAUSED) }
             }
             PodcastPlaybackStatus.PAUSED -> {
-                audioPlayer.resume()
-                _uiState.update { it.copy(playbackStatus = PodcastPlaybackStatus.PLAYING) }
-                startProgressTicker()
+                if (controller != null && controller.mediaItemCount > 0) {
+                    controller.setPlaybackSpeed(state.playbackSpeed)
+                    controller.play()
+                    _uiState.update { it.copy(playbackStatus = PodcastPlaybackStatus.PLAYING) }
+                    startProgressTicker()
+                } else {
+                    playTurn(state.activeTurnIndex)
+                }
             }
             PodcastPlaybackStatus.SYNTHESIZING -> {
                 stopPlaybackInternal()
@@ -199,6 +374,37 @@ class PodcastViewModel(
                 playTurn(state.activeTurnIndex)
             }
         }
+    }
+
+    fun seekTo(positionMs: Long) {
+        val controller = activeMediaController ?: return
+        val dur = controller.duration.coerceAtLeast(_uiState.value.durationMs).coerceAtLeast(1L)
+        val target = positionMs.coerceIn(0L, dur)
+        controller.seekTo(target)
+        _uiState.update {
+            it.copy(
+                currentPositionMs = target,
+                turnProgressFraction = (target.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+            )
+        }
+    }
+
+    fun skipForward15() {
+        val controller = activeMediaController ?: return
+        controller.seekForward()
+        syncPositionFromController(controller)
+    }
+
+    fun skipBack15() {
+        val controller = activeMediaController ?: return
+        controller.seekBack()
+        syncPositionFromController(controller)
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 2.0f)
+        activeMediaController?.setPlaybackSpeed(clamped)
+        _uiState.update { it.copy(playbackSpeed = clamped) }
     }
 
     fun playNextTurn() {
@@ -225,15 +431,19 @@ class PodcastViewModel(
 
     fun playTurn(turnIndex: Int) {
         val state = _uiState.value
-        val episode = state.selectedEpisode ?: return
+        val track = state.selectedTrack ?: return
         val turn = state.dialogueTurns.getOrNull(turnIndex) ?: return
 
         stopPlaybackInternal()
+        val sessionId = ++activePlaySessionId
+        playingBundledFullAudio = false
 
         _uiState.update {
             it.copy(
                 activeTurnIndex = turnIndex,
                 playbackStatus = PodcastPlaybackStatus.SYNTHESIZING,
+                currentPositionMs = 0L,
+                durationMs = 0L,
                 turnProgressFraction = 0f,
                 errorMessage = null,
                 statusBanner = null
@@ -241,53 +451,48 @@ class PodcastViewModel(
         }
 
         playbackJob = viewModelScope.launch {
-            val result = murfAudioRepository.getOrSynthesizeTurn(episode.weekNumber, turn)
+            val basePath = state.manifestInfo?.specs?.audioBasePath ?: "media/audio/v1/"
+            val bundledFullAudio = if (turnIndex == 0) {
+                murfAudioRepository.resolveBundledTrackAsset(
+                    audioBasePath = basePath,
+                    relativeAudioFile = track.audioFile,
+                    trackId = track.trackId
+                )
+            } else {
+                null
+            }
+
+            if (bundledFullAudio != null) {
+                if (sessionId != activePlaySessionId) return@launch
+                playingBundledFullAudio = true
+                _uiState.update {
+                    it.copy(cachedTurnIndices = state.dialogueTurns.indices.toSet())
+                }
+                startMedia3Playback(
+                    file = bundledFullAudio,
+                    track = track,
+                    turn = turn,
+                    sessionId = sessionId
+                )
+                return@launch
+            }
+
+            val result = murfAudioRepository.getOrSynthesizeTurn(track.trackId, turn)
+            if (sessionId != activePlaySessionId) return@launch
+
             result.onSuccess { audioFile ->
                 _uiState.update {
                     it.copy(cachedTurnIndices = it.cachedTurnIndices + turn.index)
                 }
 
-                // Prefetch the next alternating host's voice in the background for gapless transitions
-                prefetchNextTurn(episode.weekNumber, state.dialogueTurns, turnIndex + 1)
+                // Prefetch the next alternating host's chapter for seamless playback
+                prefetchNextTurn(track.trackId, state.dialogueTurns, turnIndex + 1)
 
-                audioPlayer.playFile(
+                startMedia3Playback(
                     file = audioFile,
-                    onPrepared = {
-                        _uiState.update {
-                            it.copy(
-                                playbackStatus = PodcastPlaybackStatus.PLAYING,
-                                errorMessage = null
-                            )
-                        }
-                        startProgressTicker()
-                    },
-                    onCompleted = {
-                        progressJob?.cancel()
-                        val latest = _uiState.value
-                        val nextIdx = turnIndex + 1
-                        if (latest.selectedEpisode?.weekNumber == episode.weekNumber &&
-                            nextIdx < latest.dialogueTurns.size
-                        ) {
-                            playTurn(nextIdx)
-                        } else {
-                            _uiState.update {
-                                it.copy(
-                                    playbackStatus = PodcastPlaybackStatus.IDLE,
-                                    turnProgressFraction = 1f,
-                                    statusBanner = "Week ${episode.weekNumber} complete. Take the next step."
-                                )
-                            }
-                        }
-                    },
-                    onError = { errMsg ->
-                        progressJob?.cancel()
-                        _uiState.update {
-                            it.copy(
-                                playbackStatus = PodcastPlaybackStatus.ERROR,
-                                errorMessage = errMsg
-                            )
-                        }
-                    }
+                    track = track,
+                    turn = turn,
+                    sessionId = sessionId
                 )
             }.onFailure { err ->
                 _uiState.update {
@@ -300,36 +505,102 @@ class PodcastViewModel(
         }
     }
 
+    private suspend fun startMedia3Playback(
+        file: File,
+        track: PlayablePodcastTrack,
+        turn: PodcastDialogueTurn,
+        sessionId: Long
+    ) {
+        val controller = awaitMediaController()
+        if (sessionId != activePlaySessionId) return
+
+        if (controller == null) {
+            _uiState.update {
+                it.copy(
+                    playbackStatus = PodcastPlaybackStatus.ERROR,
+                    errorMessage = "Audio playback service is still starting. Tap Play to try again."
+                )
+            }
+            return
+        }
+
+        val mediaItem = MediaItem.Builder()
+            .setMediaId("${track.trackId}_ch_${turn.index}")
+            .setUri(Uri.fromFile(file))
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist("${turn.host.displayName} · Sacred Steps to Redemption")
+                    .setAlbumTitle(track.subtitle)
+                    .setSubtitle("${turn.timestampLabel} · ${turn.sectionLabel}")
+                    .build()
+            )
+            .build()
+
+        controller.setMediaItem(mediaItem)
+        controller.setPlaybackSpeed(_uiState.value.playbackSpeed)
+        controller.prepare()
+        controller.play()
+    }
+
+    private fun handleSegmentCompleted() {
+        val latest = _uiState.value
+        val track = latest.selectedTrack ?: return
+        val nextIdx = latest.activeTurnIndex + 1
+
+        if (!playingBundledFullAudio && nextIdx < latest.dialogueTurns.size) {
+            val sessionId = activePlaySessionId
+            playbackJob = viewModelScope.launch {
+                // Natural conversational breath between alternating voices
+                delay(450L)
+                if (sessionId == activePlaySessionId &&
+                    _uiState.value.selectedTrack?.trackId == track.trackId
+                ) {
+                    playTurn(nextIdx)
+                }
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    playbackStatus = PodcastPlaybackStatus.IDLE,
+                    currentPositionMs = it.durationMs,
+                    turnProgressFraction = 1f,
+                    statusBanner = "${track.title} complete. Take the next step."
+                )
+            }
+        }
+    }
+
     /**
-     * Synthesizes and caches every alternating turn of the currently selected episode via Murf.ai
-     * so the full weekly episode plays seamlessly offline.
+     * Synthesizes and caches every alternating chapter of the currently selected track via Murf.ai
+     * so the full monthly orientation or daily episode plays seamlessly offline.
      */
-    fun prepareFullEpisodeOffline() {
+    fun prepareFullTrackOffline() {
         val state = _uiState.value
-        val episode = state.selectedEpisode ?: return
+        val track = state.selectedTrack ?: return
         val turns = state.dialogueTurns
-        if (turns.isEmpty() || state.isPreparingEpisode) return
+        if (turns.isEmpty() || state.isPreparingTrack) return
 
         prepareAllJob?.cancel()
         prepareAllJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(
-                    isPreparingEpisode = true,
+                    isPreparingTrack = true,
                     prepareProgress = 0f,
                     errorMessage = null,
-                    statusBanner = "Synthesizing alternating voices for Week ${episode.weekNumber}..."
+                    statusBanner = "Preparing alternating studio voices for ${track.title}..."
                 )
             }
 
             var completed = 0
             for (turn in turns) {
-                val res = murfAudioRepository.getOrSynthesizeTurn(episode.weekNumber, turn)
+                val res = murfAudioRepository.getOrSynthesizeTurn(track.trackId, turn)
                 if (res.isFailure) {
                     _uiState.update {
                         it.copy(
-                            isPreparingEpisode = false,
+                            isPreparingTrack = false,
                             errorMessage = res.exceptionOrNull()?.message
-                                ?: "Stopped preparing audio for Week ${episode.weekNumber}.",
+                                ?: "Stopped preparing audio for ${track.title}.",
                             statusBanner = null
                         )
                     }
@@ -346,31 +617,27 @@ class PodcastViewModel(
 
             _uiState.update {
                 it.copy(
-                    isPreparingEpisode = false,
+                    isPreparingTrack = false,
                     prepareProgress = 1f,
-                    statusBanner = "All ${turns.size} alternating segments cached for offline listening."
+                    statusBanner = "All ${turns.size} alternating chapters cached for offline listening."
                 )
             }
         }
     }
 
-    fun dismissBanner() {
-        _uiState.update { it.copy(statusBanner = null, errorMessage = null) }
-    }
-
     private fun prefetchNextTurn(
-        weekNumber: Int,
+        trackId: String,
         turns: List<PodcastDialogueTurn>,
         nextIndex: Int
     ) {
         val nextTurn = turns.getOrNull(nextIndex) ?: return
-        if (murfAudioRepository.isTurnCached(weekNumber, nextTurn)) return
+        if (murfAudioRepository.isTurnCached(trackId, nextTurn)) return
         prefetchJob?.cancel()
         prefetchJob = viewModelScope.launch {
-            murfAudioRepository.getOrSynthesizeTurn(weekNumber, nextTurn)
+            murfAudioRepository.getOrSynthesizeTurn(trackId, nextTurn)
                 .onSuccess {
                     _uiState.update { state ->
-                        if (state.selectedEpisode?.weekNumber == weekNumber) {
+                        if (state.selectedTrack?.trackId == trackId) {
                             state.copy(cachedTurnIndices = state.cachedTurnIndices + nextTurn.index)
                         } else {
                             state
@@ -380,41 +647,65 @@ class PodcastViewModel(
         }
     }
 
+    private fun syncPositionFromController(controller: MediaController) {
+        val dur = controller.duration.coerceAtLeast(0L)
+        val pos = controller.currentPosition.coerceAtLeast(0L)
+        _uiState.update {
+            it.copy(
+                currentPositionMs = pos,
+                durationMs = dur,
+                turnProgressFraction = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+            )
+        }
+    }
+
     private fun startProgressTicker() {
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
-            while (isActive && audioPlayer.isPlaying()) {
-                val dur = audioPlayer.durationMs().coerceAtLeast(1)
-                val pos = audioPlayer.currentPositionMs().coerceIn(0, dur)
-                _uiState.update {
-                    it.copy(turnProgressFraction = pos.toFloat() / dur.toFloat())
+            while (isActive) {
+                val controller = activeMediaController
+                if (controller == null || !controller.isPlaying) {
+                    break
                 }
-                delay(200L)
+                syncPositionFromController(controller)
+                delay(250L)
             }
         }
     }
 
     private fun stopPlaybackInternal() {
+        activePlaySessionId++
         playbackJob?.cancel()
         prefetchJob?.cancel()
         progressJob?.cancel()
-        audioPlayer.release()
+        activeMediaController?.let { controller ->
+            runCatching {
+                controller.stop()
+                controller.clearMediaItems()
+            }
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
         stopPlaybackInternal()
         prepareAllJob?.cancel()
+        activeMediaController?.removeListener(playerListener)
+        activeMediaController = null
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
     }
 
     companion object {
         fun provideFactory(
+            appContext: Context,
             podcastRepository: PodcastRepository,
             murfAudioRepository: MurfAudioRepository
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return PodcastViewModel(
+                    appContext = appContext.applicationContext,
                     podcastRepository = podcastRepository,
                     murfAudioRepository = murfAudioRepository
                 ) as T

@@ -79,6 +79,7 @@ import com.example.ui.components.UnlockWalkCard
 import com.example.ui.theme.AccentScriptStyle
 import com.example.ui.theme.AffirmationSerifStyle
 import com.example.ui.theme.LocalSacredColors
+import com.example.util.SacredCalendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -140,11 +141,14 @@ fun TodayScreen(
             }
 
             item {
+                val todayInfo = remember { SacredCalendar.today() }
                 DayNavigationStrip(
                     dayNumber = affirmation.dayNumber,
+                    todayDayNumber = todayInfo.dayOfYear365,
                     isPremiumUnlocked = userProgress.isPremiumUnlocked,
                     onPrevious = { onSelectDay(affirmation.dayNumber - 1) },
                     onNext = { onSelectDay(affirmation.dayNumber + 1) },
+                    onJumpToToday = { onSelectDay(todayInfo.dayOfYear365) },
                     onOpenUnlock = onOpenUnlock
                 )
             }
@@ -159,7 +163,7 @@ fun TodayScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Day ${affirmation.dayNumber} is waiting just beyond your first seven days.",
+                            text = "Day ${affirmation.dayNumber} is part of the full 365-day walk.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = sacredColors.subtleText
                         )
@@ -176,17 +180,18 @@ fun TodayScreen(
                 }
 
                 item {
+                    val todayDay = remember { SacredCalendar.today().dayOfYear365 }
                     OutlinedButton(
-                        onClick = { onSelectDay(7) },
+                        onClick = { onSelectDay(todayDay) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
-                            .testTag("return_to_day_7_button"),
+                            .testTag("return_to_today_button"),
                         shape = MaterialTheme.shapes.medium,
                         border = BorderStroke(1.dp, sacredColors.hairline)
                     ) {
                         Text(
-                            text = "Return to Day 7 for Now",
+                            text = "Return to Today",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -666,12 +671,21 @@ private fun SanctuaryHeaderBanner(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
+                val dateInfo = remember(affirmation.dayNumber) {
+                    SacredCalendar.fromDayOfYear365(affirmation.dayNumber)
+                }
+                val isToday = remember(affirmation.dayNumber) {
+                    affirmation.dayNumber == SacredCalendar.today().dayOfYear365
+                }
                 Surface(
                     shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
                 ) {
                     Text(
-                        text = "Month ${affirmation.monthNumber} · ${affirmation.monthName}  ·  Week ${affirmation.weekNumber} of 52",
+                        text = buildString {
+                            if (isToday) append("Today · ")
+                            append("${dateInfo.weekdayFull}, ${dateInfo.monthName} ${dateInfo.dayOfMonth} · Week ${affirmation.weekNumber} of 52")
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
@@ -701,13 +715,15 @@ private fun SanctuaryHeaderBanner(
 @Composable
 private fun DayNavigationStrip(
     dayNumber: Int,
+    todayDayNumber: Int,
     isPremiumUnlocked: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onJumpToToday: () -> Unit,
     onOpenUnlock: () -> Unit
 ) {
     val sacredColors = LocalSacredColors.current
-    val nextLocked = dayNumber >= 7 && !isPremiumUnlocked
+    val nextLocked = dayNumber < 365 && !isPremiumUnlocked && !SacredCalendar.isDayInFreeWindow(dayNumber + 1)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -732,7 +748,23 @@ private fun DayNavigationStrip(
             Text(text = "Prev", style = MaterialTheme.typography.labelLarge)
         }
 
-        if (!isPremiumUnlocked) {
+        if (dayNumber != todayDayNumber) {
+            Surface(
+                onClick = onJumpToToday,
+                shape = MaterialTheme.shapes.small,
+                color = sacredColors.sageContainer,
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.small)
+                    .testTag("jump_to_today_button")
+            ) {
+                Text(
+                    text = "Back to Today",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+        } else if (!isPremiumUnlocked) {
             Surface(
                 onClick = onOpenUnlock,
                 shape = MaterialTheme.shapes.small,
@@ -777,7 +809,7 @@ private fun DayNavigationStrip(
             border = BorderStroke(1.dp, sacredColors.hairline)
         ) {
             Text(
-                text = if (nextLocked && dayNumber == 7) "Day 8" else "Next",
+                text = "Next",
                 style = MaterialTheme.typography.labelLarge
             )
             Spacer(modifier = Modifier.width(4.dp))

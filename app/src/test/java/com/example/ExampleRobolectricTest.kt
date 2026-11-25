@@ -6,12 +6,14 @@ import com.example.data.local.AffirmationSeedData
 import com.example.data.local.DatabaseProvider
 import com.example.data.local.JournalEntryEntity
 import com.example.data.local.UserPreferencesRepository
-import com.example.data.local.WorkbookSeedData
 import com.example.data.remote.EspWebhookClient
 import com.example.data.repository.AffirmationRepository
 import com.example.data.repository.JournalRepository
+import com.example.journal.MonthlyJournalRepository
 import com.example.notifications.NotificationScheduler
 import com.example.ui.DailyAffirmationViewModel
+import com.example.util.SacredCalendar
+import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -95,25 +97,40 @@ class ExampleRobolectricTest {
             )
             val journalRepo = JournalRepository(
                 journalEntryDao = db.journalEntryDao(),
-                workbookNoteDao = db.workbookNoteDao(),
+                monthlyJournalResponseDao = db.monthlyJournalResponseDao(),
                 affirmationDao = db.affirmationDao()
             )
+            val monthlyJournalRepo = MonthlyJournalRepository(context)
             val viewModel = DailyAffirmationViewModel(
                 affirmationRepository = affirmationRepo,
                 journalRepository = journalRepo,
+                monthlyJournalRepository = monthlyJournalRepo,
                 notificationScheduler = NotificationScheduler(context)
             )
 
             advanceUntilIdle()
 
+            val todayInfo = SacredCalendar.today()
+            assertEquals(todayInfo.dayOfYear365, affirmationRepo.userProgress.first().currentDay)
             assertFalse(viewModel.isDayLocked(1))
             assertFalse(viewModel.isDayLocked(7))
-            assertTrue(viewModel.isDayLocked(8))
+            assertFalse(viewModel.isDayLocked(todayInfo.dayOfYear365))
+            val lockedProbeDay = if (todayInfo.weekNumber == 2) 100 else 8
+            assertTrue(viewModel.isDayLocked(lockedProbeDay))
 
             viewModel.saveJournalEntry(1, "Grateful for a quiet start.")
+            viewModel.saveMonthlyJournalResponse(1, "day_1_embrace", "I am a new creation in Christ.")
             advanceUntilIdle()
+
             val savedEntries = journalRepo.observeEntriesForDay(1).first()
             assertTrue(savedEntries.any { it.entryText == "Grateful for a quiet start." })
+
+            val monthlyMap = journalRepo.monthlyJournalResponsesMap.first()
+            assertEquals("I am a new creation in Christ.", monthlyMap["1:day_1_embrace"])
+
+            val exportText = journalRepo.buildExportableJournalText()
+            assertTrue(exportText.contains("MONTHLY TRANSFORMATION JOURNAL NOTES"))
+            assertTrue(exportText.contains("I am a new creation in Christ."))
 
             affirmationRepo.toggleDayCompleted(1, true)
             advanceUntilIdle()
@@ -125,10 +142,77 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `four companion workbooks are configured`() {
-        assertEquals(4, WorkbookSeedData.modules.size)
-        assertTrue(WorkbookSeedData.modules.any { it.traumaInformedNotice != null })
-        assertTrue(WorkbookSeedData.modules.any { it.isCelebratoryOnly })
+    fun `all 12 monthly transformation journals load with January identity content and full themes`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = MonthlyJournalRepository(context)
+        val journals = repo.loadAllJournals()
+
+        assertEquals(12, journals.size)
+        assertEquals(
+            listOf(
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ),
+            journals.map { it.monthName }
+        )
+
+        val expectedDayCounts = listOf(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+        assertEquals(expectedDayCounts, journals.map { it.days.size })
+        assertEquals(365, journals.sumOf { it.days.size })
+
+        val affirmationsByMonth = AffirmationSeedData.buildAll365Days()
+            .groupBy { it.monthNumber }
+            .toSortedMap()
+            .values
+            .map { it.size }
+        assertEquals(expectedDayCounts, affirmationsByMonth)
+
+        val january = journals.first()
+        assertEquals("Identity", january.themeTitle)
+        assertEquals("Discovering Who God Says I Am", january.subtitle)
+        assertEquals(4, january.weeks.size)
+        assertEquals(31, january.days.size)
+        assertEquals("My Past Does Not Define Me", january.days.first().title)
+        assertTrue(january.days.first().scripture.contains("Isaiah 43:18"))
+        assertEquals("I Take My Next Sacred Step", january.days[29].title)
+        assertTrue(january.days[29].scripture.contains("Psalm 37:23"))
+        assertTrue(january.days.last().scripture.contains("Galatians 4:6"))
+
+        assertTrue(journals.all { j ->
+            j.welcomeLetter.isNotBlank() &&
+                j.themeIntro.isNotBlank() &&
+                j.themeScripture.isNotBlank() &&
+                j.openingPrayer.isNotBlank() &&
+                j.weeks.size == 4 &&
+                j.weeks.first().dayStart == 1 &&
+                j.weeks.last().dayEnd == j.days.size &&
+                j.endOfMonthPrompts.size == 5 &&
+                j.declarationAnchors.isNotEmpty() &&
+                j.closingPrayer.isNotBlank()
+        })
+    }
+
+    @Test
+    fun `sacred calendar maps real calendar month and weekday accurately across 365 days`() {
+        val nov24 = Calendar.getInstance().apply {
+            set(Calendar.YEAR, 2026)
+            set(Calendar.MONTH, Calendar.NOVEMBER)
+            set(Calendar.DAY_OF_MONTH, 24)
+        }
+        val info = SacredCalendar.today(nov24)
+        assertEquals(11, info.monthNumber)
+        assertEquals("November", info.monthName)
+        assertEquals(24, info.dayOfMonth)
+        assertEquals(328, info.dayOfYear365)
+        assertEquals(47, info.weekNumber)
+        assertEquals("Tuesday", info.weekdayFull)
+        assertTrue(SacredCalendar.isDayInFreeWindow(328, info))
+        assertFalse(SacredCalendar.isDayInFreeWindow(100, info))
+
+        val roundTrip = SacredCalendar.fromDayOfYear365(328, year = 2026)
+        assertEquals("November", roundTrip.monthName)
+        assertEquals(24, roundTrip.dayOfMonth)
+        assertEquals("Tuesday", roundTrip.weekdayFull)
     }
 
     @Test

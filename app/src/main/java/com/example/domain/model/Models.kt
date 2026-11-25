@@ -33,7 +33,7 @@ data class UserProgress(
     val userEmail: String = "",
     val userName: String = "",
     val daysCompleted: Int = 0,
-    val currentDay: Int = 1,
+    val currentDay: Int = com.example.util.SacredCalendar.today().dayOfYear365,
     val notificationsEnabled: Boolean = false,
     val reminderHour: Int = 8,
     val reminderMinute: Int = 0,
@@ -64,28 +64,3 @@ enum class HeartMood(val label: String, val gentleResponse: String) {
         gentleResponse = "Even a small flicker of hope is enough light for today's step."
     )
 }
-
-enum class WorkbookModuleId {
-    THE_PATH,
-    DAILY_WALK,
-    SHADOWS_TO_LIGHT,
-    NEW_CREATION
-}
-
-data class WorkbookPrompt(
-    val key: String,
-    val title: String,
-    val prompt: String,
-    val placeholder: String
-)
-
-data class WorkbookModule(
-    val id: WorkbookModuleId,
-    val workbookNumber: String,
-    val title: String,
-    val subtitle: String,
-    val description: String,
-    val traumaInformedNotice: String? = null,
-    val isCelebratoryOnly: Boolean = false,
-    val prompts: List<WorkbookPrompt>
-)

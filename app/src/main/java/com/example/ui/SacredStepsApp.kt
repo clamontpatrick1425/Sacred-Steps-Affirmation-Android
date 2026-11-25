@@ -1,7 +1,11 @@
 package com.example.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,10 +64,13 @@ import com.example.podcast.PodcastViewModel
 import com.example.ui.components.GroundingSanctuarySheet
 import com.example.ui.components.UnlockJourneyDialog
 import com.example.ui.screens.JourneyScreen
+import com.example.ui.screens.PodcastEpisodePlayerView
+import com.example.ui.screens.PodcastMiniPlayerBar
 import com.example.ui.screens.PodcastsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TodayScreen
 import com.example.ui.theme.LocalSacredColors
+import com.example.util.SacredCalendar
 
 object SacredRoutes {
     const val TODAY = "today"
@@ -160,9 +167,12 @@ fun SacredStepsApp(
                     title = {
                         val currentAff = uiState.currentAffirmation
                         if (currentRoute == SacredRoutes.TODAY && currentAff != null) {
+                            val dateInfo = remember(currentAff.dayNumber) {
+                                SacredCalendar.fromDayOfYear365(currentAff.dayNumber)
+                            }
                             Column {
                                 Text(
-                                    text = "${currentAff.monthName} · Week ${currentAff.weekNumber}",
+                                    text = "${dateInfo.weekdayFull}, ${dateInfo.monthName} ${dateInfo.dayOfMonth} · Week ${currentAff.weekNumber}",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = sacredColors.dawnGold
                                 )
@@ -215,36 +225,48 @@ fun SacredStepsApp(
             },
             bottomBar = {
                 if (!useRail) {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        windowInsets = WindowInsets.navigationBars
-                    ) {
-                        navTabs.forEach { tab ->
-                            val selected = currentRoute == tab.route
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = { navigateToTab(tab.route) },
-                                icon = {
-                                    Icon(
-                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                        contentDescription = stringResource(tab.labelRes)
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = stringResource(tab.labelRes),
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    indicatorColor = sacredColors.dawnGoldContainer,
-                                    unselectedIconColor = sacredColors.subtleText,
-                                    unselectedTextColor = sacredColors.subtleText
-                                ),
-                                modifier = Modifier.testTag(tab.testTag)
+                    Column {
+                        AnimatedVisibility(
+                            visible = podcastUiState.selectedTrack != null && !podcastUiState.isFullPlayerExpanded
+                        ) {
+                            PodcastMiniPlayerBar(
+                                uiState = podcastUiState,
+                                onTogglePlayPause = { podcastViewModel.togglePlayPause() },
+                                onExpandPlayer = { podcastViewModel.expandPlayer() },
+                                onDismiss = { podcastViewModel.dismissPlayer() }
                             )
+                        }
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            windowInsets = WindowInsets.navigationBars
+                        ) {
+                            navTabs.forEach { tab ->
+                                val selected = currentRoute == tab.route
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = { navigateToTab(tab.route) },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                            contentDescription = stringResource(tab.labelRes)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = stringResource(tab.labelRes),
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = sacredColors.dawnGoldContainer,
+                                        unselectedIconColor = sacredColors.subtleText,
+                                        unselectedTextColor = sacredColors.subtleText
+                                    ),
+                                    modifier = Modifier.testTag(tab.testTag)
+                                )
+                            }
                         }
                     }
                 }
@@ -280,77 +302,123 @@ fun SacredStepsApp(
                     }
                 }
 
-                NavHost(
-                    navController = navController,
-                    startDestination = SacredRoutes.TODAY,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    composable(SacredRoutes.TODAY) {
-                        TodayScreen(
-                            affirmation = uiState.currentAffirmation,
-                            userProgress = uiState.userProgress,
-                            journalEntries = uiState.journalEntriesForCurrentDay,
-                            isUnlockSubmitting = uiState.isUnlockSubmitting,
-                            unlockErrorMessage = uiState.unlockErrorMessage,
-                            onSelectDay = { day -> viewModel.selectDay(day) },
-                            onSelectHeartMood = { mood -> viewModel.selectHeartMood(mood) },
-                            onToggleWalked = { viewModel.toggleCurrentDayWalked() },
-                            onSaveJournal = { day, text -> viewModel.saveJournalEntry(day, text) },
-                            onDeleteJournal = { id -> viewModel.deleteJournalEntry(id) },
-                            onSubmitUnlock = { email, firstName, espProvider ->
-                                viewModel.submitUnlockEmail(email, firstName, espProvider)
-                            },
-                            onOpenUnlock = { viewModel.openUnlockDialog() }
-                        )
+                Column(modifier = Modifier.weight(1f)) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = SacredRoutes.TODAY,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        composable(SacredRoutes.TODAY) {
+                            TodayScreen(
+                                affirmation = uiState.currentAffirmation,
+                                userProgress = uiState.userProgress,
+                                journalEntries = uiState.journalEntriesForCurrentDay,
+                                isUnlockSubmitting = uiState.isUnlockSubmitting,
+                                unlockErrorMessage = uiState.unlockErrorMessage,
+                                onSelectDay = { day -> viewModel.selectDay(day) },
+                                onSelectHeartMood = { mood -> viewModel.selectHeartMood(mood) },
+                                onToggleWalked = { viewModel.toggleCurrentDayWalked() },
+                                onSaveJournal = { day, text -> viewModel.saveJournalEntry(day, text) },
+                                onDeleteJournal = { id -> viewModel.deleteJournalEntry(id) },
+                                onSubmitUnlock = { email, firstName, espProvider ->
+                                    viewModel.submitUnlockEmail(email, firstName, espProvider)
+                                },
+                                onOpenUnlock = { viewModel.openUnlockDialog() }
+                            )
+                        }
+                        composable(SacredRoutes.PODCASTS) {
+                            PodcastsScreen(
+                                uiState = podcastUiState,
+                                onSelectMonth = { monthNum -> podcastViewModel.selectMonth(monthNum) },
+                                onOpenTrack = { track, autoPlay -> podcastViewModel.openTrack(track, autoPlay) },
+                                onSwapLeadHost = { podcastViewModel.swapAlternatingLeadHost() }
+                            )
+                        }
+                        composable(SacredRoutes.JOURNEY) {
+                            JourneyScreen(
+                                affirmations = uiState.affirmations,
+                                userProgress = uiState.userProgress,
+                                journaledDays = uiState.journaledDays,
+                                monthlyJournals = uiState.monthlyJournals,
+                                monthlyJournalResponses = uiState.monthlyJournalResponses,
+                                onSelectDay = { day ->
+                                    viewModel.selectDay(day) {
+                                        navigateToTab(SacredRoutes.TODAY)
+                                    }
+                                },
+                                onSaveMonthlyJournalResponse = { monthNum, entryKey, content ->
+                                    viewModel.saveMonthlyJournalResponse(monthNum, entryKey, content)
+                                },
+                                onOpenUnlock = { viewModel.openUnlockDialog() }
+                            )
+                        }
+                        composable(SacredRoutes.SETTINGS) {
+                            SettingsScreen(
+                                userProgress = uiState.userProgress,
+                                journalEntryCount = uiState.allJournalEntries.size,
+                                onOpenUnlock = { viewModel.openUnlockDialog() },
+                                onUpdateNotifications = { enabled, hour, minute ->
+                                    viewModel.updateNotificationSchedule(enabled, hour, minute)
+                                },
+                                onSetDarkModeOverride = { override ->
+                                    viewModel.setDarkModeOverride(override)
+                                },
+                                onPrepareExport = { callback ->
+                                    viewModel.prepareJournalExport(callback)
+                                }
+                            )
+                        }
                     }
-                    composable(SacredRoutes.PODCASTS) {
-                        val currentWeek = ((uiState.userProgress.currentDay - 1) / 7 + 1).coerceIn(1, 52)
-                        PodcastsScreen(
+
+                    if (useRail) {
+                        AnimatedVisibility(
+                            visible = podcastUiState.selectedTrack != null && !podcastUiState.isFullPlayerExpanded
+                        ) {
+                            PodcastMiniPlayerBar(
+                                uiState = podcastUiState,
+                                onTogglePlayPause = { podcastViewModel.togglePlayPause() },
+                                onExpandPlayer = { podcastViewModel.expandPlayer() },
+                                onDismiss = { podcastViewModel.dismissPlayer() },
+                                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Full-Screen Expandable Podcast Player Overlay (accessible from any tab via MiniPlayerBar)
+        val expandedTrack = podcastUiState.selectedTrack
+        AnimatedVisibility(
+            visible = expandedTrack != null && podcastUiState.isFullPlayerExpanded,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            if (expandedTrack != null) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                    ) {
+                        PodcastEpisodePlayerView(
+                            track = expandedTrack,
                             uiState = podcastUiState,
-                            currentWeekNumber = currentWeek,
-                            onSelectMonth = { month -> podcastViewModel.selectMonthFilter(month) },
-                            onOpenEpisode = { ep, autoPlay -> podcastViewModel.openEpisode(ep, autoPlay) },
-                            onCloseEpisode = { podcastViewModel.closeEpisodePlayer() },
+                            onMinimize = { podcastViewModel.minimizePlayer() },
                             onTogglePlayPause = { podcastViewModel.togglePlayPause() },
+                            onSeek = { posMs -> podcastViewModel.seekTo(posMs) },
+                            onSkipBack15 = { podcastViewModel.skipBack15() },
+                            onSkipForward15 = { podcastViewModel.skipForward15() },
+                            onSetSpeed = { speed -> podcastViewModel.setPlaybackSpeed(speed) },
                             onPreviousTurn = { podcastViewModel.playPreviousTurn() },
                             onNextTurn = { podcastViewModel.playNextTurn() },
                             onSelectTurn = { idx -> podcastViewModel.playTurn(idx) },
                             onSwapLeadHost = { podcastViewModel.swapAlternatingLeadHost() },
-                            onPrepareOffline = { podcastViewModel.prepareFullEpisodeOffline() }
-                        )
-                    }
-                    composable(SacredRoutes.JOURNEY) {
-                        JourneyScreen(
-                            affirmations = uiState.affirmations,
-                            userProgress = uiState.userProgress,
-                            journaledDays = uiState.journaledDays,
-                            workbookModules = uiState.workbookModules,
-                            workbookNotes = uiState.workbookNotes,
-                            onSelectDay = { day ->
-                                viewModel.selectDay(day) {
-                                    navigateToTab(SacredRoutes.TODAY)
-                                }
-                            },
-                            onSaveWorkbookNote = { modId, key, content ->
-                                viewModel.saveWorkbookNote(modId, key, content)
-                            },
-                            onOpenUnlock = { viewModel.openUnlockDialog() }
-                        )
-                    }
-                    composable(SacredRoutes.SETTINGS) {
-                        SettingsScreen(
-                            userProgress = uiState.userProgress,
-                            journalEntryCount = uiState.allJournalEntries.size,
-                            onOpenUnlock = { viewModel.openUnlockDialog() },
-                            onUpdateNotifications = { enabled, hour, minute ->
-                                viewModel.updateNotificationSchedule(enabled, hour, minute)
-                            },
-                            onSetDarkModeOverride = { override ->
-                                viewModel.setDarkModeOverride(override)
-                            },
-                            onPrepareExport = { callback ->
-                                viewModel.prepareJournalExport(callback)
-                            }
+                            onPrepareOffline = { podcastViewModel.prepareFullTrackOffline() }
                         )
                     }
                 }

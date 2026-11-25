@@ -7,6 +7,7 @@ import com.example.data.local.UserPreferencesRepository
 import com.example.data.remote.EspWebhookClient
 import com.example.data.repository.AffirmationRepository
 import com.example.data.repository.JournalRepository
+import com.example.journal.MonthlyJournalRepository
 import com.example.notifications.NotificationScheduler
 import com.example.podcast.MurfAudioRepository
 import com.example.podcast.PodcastRepository
@@ -40,9 +41,13 @@ class AppContainer(application: Application) {
     val journalRepository: JournalRepository by lazy {
         JournalRepository(
             journalEntryDao = database.journalEntryDao(),
-            workbookNoteDao = database.workbookNoteDao(),
+            monthlyJournalResponseDao = database.monthlyJournalResponseDao(),
             affirmationDao = database.affirmationDao()
         )
+    }
+
+    val monthlyJournalRepository: MonthlyJournalRepository by lazy {
+        MonthlyJournalRepository(application)
     }
 
     val podcastRepository: PodcastRepository by lazy {
