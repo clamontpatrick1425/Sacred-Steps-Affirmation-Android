@@ -50,7 +50,7 @@ fun PodcastMiniPlayerBar(
 ) {
     val track = uiState.selectedTrack ?: return
     val sacredColors = LocalSacredColors.current
-    val activeHost = uiState.activeTurn?.host ?: uiState.leadHost
+    val activeHost = uiState.activeTurn?.host ?: uiState.activePresenter
     val activeSubtitle = uiState.activeTurn?.let {
         "${activeHost.displayName} · ${it.sectionLabel}"
     } ?: track.subtitle

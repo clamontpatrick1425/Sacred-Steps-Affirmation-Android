@@ -330,8 +330,7 @@ fun SacredStepsApp(
                             PodcastsScreen(
                                 uiState = podcastUiState,
                                 onSelectMonth = { monthNum -> podcastViewModel.selectMonth(monthNum) },
-                                onOpenTrack = { track, autoPlay -> podcastViewModel.openTrack(track, autoPlay) },
-                                onSwapLeadHost = { podcastViewModel.swapAlternatingLeadHost() }
+                                onOpenTrack = { track, autoPlay -> podcastViewModel.openTrack(track, autoPlay) }
                             )
                         }
                         composable(SacredRoutes.JOURNEY) {
@@ -417,7 +416,7 @@ fun SacredStepsApp(
                             onPreviousTurn = { podcastViewModel.playPreviousTurn() },
                             onNextTurn = { podcastViewModel.playNextTurn() },
                             onSelectTurn = { idx -> podcastViewModel.playTurn(idx) },
-                            onSwapLeadHost = { podcastViewModel.swapAlternatingLeadHost() },
+                            onCyclePresenter = { podcastViewModel.cyclePresenterForCurrentTrack() },
                             onPrepareOffline = { podcastViewModel.prepareFullTrackOffline() }
                         )
                     }

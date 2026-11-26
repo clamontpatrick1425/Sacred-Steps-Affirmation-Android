@@ -159,6 +159,11 @@ sealed interface PlayablePodcastTrack {
     }
 }
 
+/**
+ * Top 5 Murf.ai Gen2 studio voices.
+ * Each podcast is presented from start to finish by ONE dedicated presenter,
+ * rotating across these 5 voices from episode to episode.
+ */
 enum class PodcastHost(
     val displayName: String,
     val roleLabel: String,
@@ -168,28 +173,69 @@ enum class PodcastHost(
     val defaultRate: Int,
     val defaultPitch: Int
 ) {
-    GRACE(
-        displayName = "Grace",
-        roleLabel = "Warm Companion",
+    NATALIE(
+        displayName = "Natalie",
+        roleLabel = "Warm & Conversational",
         murfVoiceId = "en-US-natalie",
         conversationalStyle = "Conversational",
         reflectiveStyle = "Inspirational",
         defaultRate = -4,
         defaultPitch = 0
     ),
-    MARCUS(
-        displayName = "Marcus",
-        roleLabel = "Grace & Practice",
+    TERRELL(
+        displayName = "Terrell",
+        roleLabel = "Grounded & Inspirational",
         murfVoiceId = "en-US-terrell",
         conversationalStyle = "Conversational",
         reflectiveStyle = "Calm",
         defaultRate = -5,
         defaultPitch = -2
+    ),
+    JULIA(
+        displayName = "Julia",
+        roleLabel = "Calm & Reflective",
+        murfVoiceId = "en-US-julia",
+        conversationalStyle = "Conversational",
+        reflectiveStyle = "Calm",
+        defaultRate = -4,
+        defaultPitch = 0
+    ),
+    MILES(
+        displayName = "Miles",
+        roleLabel = "Encouraging Mentor",
+        murfVoiceId = "en-US-miles",
+        conversationalStyle = "Conversational",
+        reflectiveStyle = "Narration",
+        defaultRate = -4,
+        defaultPitch = -1
+    ),
+    AMARA(
+        displayName = "Amara",
+        roleLabel = "Grace & Clarity",
+        murfVoiceId = "en-US-amara",
+        conversationalStyle = "Conversational",
+        reflectiveStyle = "Calm",
+        defaultRate = -4,
+        defaultPitch = 0
     );
 
-    fun alternate(): PodcastHost = when (this) {
-        GRACE -> MARCUS
-        MARCUS -> GRACE
+    fun next(): PodcastHost = entries[(ordinal + 1) % entries.size]
+
+    companion object {
+        fun forMonth(monthNumber: Int): PodcastHost {
+            val idx = ((monthNumber - 1).coerceAtLeast(0)) % entries.size
+            return entries[idx]
+        }
+
+        fun forDayOfYear(dayOfYear: Int): PodcastHost {
+            val idx = ((dayOfYear - 1).coerceAtLeast(0)) % entries.size
+            return entries[idx]
+        }
+
+        fun presenterForTrack(track: PlayablePodcastTrack): PodcastHost = when (track) {
+            is PlayablePodcastTrack.MonthlyOrientation -> forMonth(track.monthNumber)
+            is PlayablePodcastTrack.DailyEpisode -> forDayOfYear(track.daily.dayOfYear)
+        }
     }
 }
 

@@ -11,8 +11,9 @@
     <!-- Monthly Orientation & Daily Podcasts -->
     <string name="podcast_hero_eyebrow">%1$d MONTHLY · %2$d DAILY · %3$d TRACKS</string>
     <string name="podcast_hero_title">Audio Sanctuary in Grace</string>
-    <string name="podcast_hero_subtitle">Twelve monthly orientation podcasts under 10 minutes paired with 365 three-and-a-half-minute daily Sacred S.T.E.P. episodes.</string>
-    <string name="podcast_today_spotlight_label">TODAY\'S DAILY PODCAST · %1$s · %2$s</string>
+    <string name="podcast_hero_subtitle">Each episode is led by one dedicated mentor voice, rotating across five natural Murf studio presenters from podcast to podcast.</string>
+    <string name="podcast_roster_title">5 Murf Studio Presenters · 1 Host Per Episode</string>
+    <string name="podcast_today_spotlight_label">TODAY\'S PODCAST · %1$s · HOST: %2$s</string>
     <string name="podcast_today_chip">Today</string>
     <string name="podcast_listen_now">Listen Now</string>
     <string name="podcast_monthly_orientation_badge">MONTHLY ORIENTATION · %1$s · %2$s (UNDER %3$d MIN)</string>
@@ -28,9 +29,9 @@
     <string name="podcast_mini_close_desc">Stop playback and close mini player</string>
     <string name="podcast_rewind_15">Rewind 15 seconds</string>
     <string name="podcast_forward_15">Forward 15 seconds</string>
-    <string name="podcast_swap_voices_desc">Swap which alternating host opens this episode</string>
-    <string name="podcast_lead_voice_label">Lead: %1$s</string>
-    <string name="podcast_alternating_voices_badge">Alternating Voices</string>
+    <string name="podcast_cycle_presenter_desc">Switch solo presenter for this episode</string>
+    <string name="podcast_presenter_chip_label">Host: %1$s</string>
+    <string name="podcast_solo_presenter_badge">Solo Presenter</string>
     <string name="podcast_status_synthesizing">Synthesizing…</string>
     <string name="podcast_status_playing">Speaking</string>
     <string name="podcast_status_paused">Paused</string>
@@ -51,7 +52,7 @@
     <string name="podcast_monthly_roadmap_title">%1$s Transformation Roadmap</string>
     <string name="podcast_anchor_scripture_label">ANCHOR SCRIPTURE</string>
     <string name="podcast_murf_setup_title">Connect Murf.ai Voice Key</string>
-    <string name="podcast_murf_setup_body">Add MURF_API_KEY in the Secrets panel in AI Studio to stream alternating studio voices for all 12 monthly orientation and 365 daily podcasts.</string>
+    <string name="podcast_murf_setup_body">Add MURF_API_KEY in the Secrets panel in AI Studio to stream the five Murf studio presenters across all 12 monthly orientation and 365 daily podcasts.</string>
 
     <!-- Grounding / SOS -->
     <string name="action_ground_yourself">Breathe</string>

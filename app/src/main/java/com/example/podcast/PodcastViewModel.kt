@@ -41,7 +41,7 @@ data class PodcastUiState(
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val playbackSpeed: Float = 1.0f,
-    val leadHost: PodcastHost = PodcastHost.GRACE,
+    val activePresenter: PodcastHost = PodcastHost.forDayOfYear(SacredCalendar.today().dayOfYear365),
     val cachedTurnIndices: Set<Int> = emptySet(),
     val isPreparingTrack: Boolean = false,
     val prepareProgress: Float = 0f,
@@ -202,6 +202,7 @@ class PodcastViewModel(
                             monthlyPlaylists = manifest.monthlyPlaylists,
                             selectedMonthNumber = today.monthNumber,
                             todayDayOfYear = today.dayOfYear365,
+                            activePresenter = PodcastHost.forDayOfYear(today.dayOfYear365),
                             isMurfConfigured = murfAudioRepository.isApiKeyConfigured(),
                             errorMessage = null
                         )
@@ -237,14 +238,16 @@ class PodcastViewModel(
         stopPlaybackInternal()
         prepareAllJob?.cancel()
 
-        val leadHost = current.leadHost
-        val turns = PodcastScriptBuilder.buildDialogueTurns(track, leadHost)
+        // Automatically select this episode's dedicated presenter from the 5-voice rotation
+        val assignedPresenter = PodcastHost.presenterForTrack(track)
+        val turns = PodcastScriptBuilder.buildDialogueTurns(track, assignedPresenter)
         val cached = murfAudioRepository.getCachedTurnIndices(track.trackId, turns)
 
         _uiState.update {
             it.copy(
                 selectedTrack = track,
                 isFullPlayerExpanded = true,
+                activePresenter = assignedPresenter,
                 dialogueTurns = turns,
                 activeTurnIndex = 0,
                 playbackStatus = PodcastPlaybackStatus.IDLE,
@@ -303,12 +306,12 @@ class PodcastViewModel(
     }
 
     /**
-     * Switches which Murf voice opens the track (Grace or Marcus) while keeping
-     * strict voice alternation across every chapter.
+     * Lets the listener cycle the single presenter on the current episode across the
+     * top 5 Murf studio voices (Natalie -> Terrell -> Julia -> Miles -> Amara).
      */
-    fun swapAlternatingLeadHost() {
-        val nextLead = _uiState.value.leadHost.alternate()
-        val track = _uiState.value.selectedTrack
+    fun cyclePresenterForCurrentTrack() {
+        val nextPresenter = _uiState.value.activePresenter.next()
+        val track = _uiState.value.selectedTrack ?: return
         val wasPlaying = _uiState.value.playbackStatus == PodcastPlaybackStatus.PLAYING ||
             _uiState.value.playbackStatus == PodcastPlaybackStatus.SYNTHESIZING
         val currentIdx = _uiState.value.activeTurnIndex
@@ -316,33 +319,24 @@ class PodcastViewModel(
         stopPlaybackInternal()
         prepareAllJob?.cancel()
 
-        if (track != null) {
-            val rebuiltTurns = PodcastScriptBuilder.buildDialogueTurns(track, nextLead)
-            val cached = murfAudioRepository.getCachedTurnIndices(track.trackId, rebuiltTurns)
-            _uiState.update {
-                it.copy(
-                    leadHost = nextLead,
-                    dialogueTurns = rebuiltTurns,
-                    cachedTurnIndices = cached,
-                    playbackStatus = PodcastPlaybackStatus.IDLE,
-                    currentPositionMs = 0L,
-                    durationMs = 0L,
-                    isPreparingTrack = false,
-                    prepareProgress = 0f,
-                    turnProgressFraction = 0f,
-                    statusBanner = "${nextLead.displayName} now opens, alternating with ${nextLead.alternate().displayName}."
-                )
-            }
-            if (wasPlaying) {
-                playTurn(currentIdx)
-            }
-        } else {
-            _uiState.update {
-                it.copy(
-                    leadHost = nextLead,
-                    statusBanner = "${nextLead.displayName} will open episodes, alternating with ${nextLead.alternate().displayName}."
-                )
-            }
+        val rebuiltTurns = PodcastScriptBuilder.buildDialogueTurns(track, nextPresenter)
+        val cached = murfAudioRepository.getCachedTurnIndices(track.trackId, rebuiltTurns)
+        _uiState.update {
+            it.copy(
+                activePresenter = nextPresenter,
+                dialogueTurns = rebuiltTurns,
+                cachedTurnIndices = cached,
+                playbackStatus = PodcastPlaybackStatus.IDLE,
+                currentPositionMs = 0L,
+                durationMs = 0L,
+                isPreparingTrack = false,
+                prepareProgress = 0f,
+                turnProgressFraction = 0f,
+                statusBanner = "Presenter switched to ${nextPresenter.displayName} (${nextPresenter.roleLabel})."
+            )
+        }
+        if (wasPlaying) {
+            playTurn(currentIdx)
         }
     }
 
@@ -485,7 +479,7 @@ class PodcastViewModel(
                     it.copy(cachedTurnIndices = it.cachedTurnIndices + turn.index)
                 }
 
-                // Prefetch the next alternating host's chapter for seamless playback
+                // Prefetch the next chapter in the background for seamless transitions
                 prefetchNextTurn(track.trackId, state.dialogueTurns, turnIndex + 1)
 
                 startMedia3Playback(
@@ -551,8 +545,8 @@ class PodcastViewModel(
         if (!playingBundledFullAudio && nextIdx < latest.dialogueTurns.size) {
             val sessionId = activePlaySessionId
             playbackJob = viewModelScope.launch {
-                // Natural conversational breath between alternating voices
-                delay(450L)
+                // Smooth natural pause between chapters by the same solo presenter
+                delay(250L)
                 if (sessionId == activePlaySessionId &&
                     _uiState.value.selectedTrack?.trackId == track.trackId
                 ) {
@@ -572,7 +566,7 @@ class PodcastViewModel(
     }
 
     /**
-     * Synthesizes and caches every alternating chapter of the currently selected track via Murf.ai
+     * Synthesizes and caches every chapter of the currently selected track via Murf.ai
      * so the full monthly orientation or daily episode plays seamlessly offline.
      */
     fun prepareFullTrackOffline() {
@@ -588,7 +582,7 @@ class PodcastViewModel(
                     isPreparingTrack = true,
                     prepareProgress = 0f,
                     errorMessage = null,
-                    statusBanner = "Preparing alternating studio voices for ${track.title}..."
+                    statusBanner = "Preparing ${state.activePresenter.displayName}'s voice for ${track.title}..."
                 )
             }
 
@@ -619,7 +613,7 @@ class PodcastViewModel(
                 it.copy(
                     isPreparingTrack = false,
                     prepareProgress = 1f,
-                    statusBanner = "All ${turns.size} alternating chapters cached for offline listening."
+                    statusBanner = "All ${turns.size} chapters cached for offline listening."
                 )
             }
         }

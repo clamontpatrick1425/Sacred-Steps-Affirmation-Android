@@ -55,11 +55,12 @@ class MurfAudioRepository(
     private val context: Context
 ) {
     // Versioned cache directory keyed by manifest track_id (POD-MONTH-XX / POD-DAY-XXX)
-    private val cacheRoot: File = File(context.cacheDir, "sacred_podcasts_v3").apply {
+    private val cacheRoot: File = File(context.cacheDir, "sacred_podcasts_v4").apply {
         mkdirs()
-        // Clean up legacy weekly podcast caches if present
+        // Clean up legacy caches so episodes regenerate cleanly with solo presenters
         File(context.cacheDir, "sacred_podcasts").takeIf { it.exists() }?.deleteRecursively()
         File(context.cacheDir, "sacred_podcasts_v2").takeIf { it.exists() }?.deleteRecursively()
+        File(context.cacheDir, "sacred_podcasts_v3").takeIf { it.exists() }?.deleteRecursively()
     }
 
     private val okHttpClient: OkHttpClient by lazy {

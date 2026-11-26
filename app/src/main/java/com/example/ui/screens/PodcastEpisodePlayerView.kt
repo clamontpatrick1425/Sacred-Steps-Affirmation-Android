@@ -91,7 +91,7 @@ fun PodcastEpisodePlayerView(
     onPreviousTurn: () -> Unit,
     onNextTurn: () -> Unit,
     onSelectTurn: (Int) -> Unit,
-    onSwapLeadHost: () -> Unit,
+    onCyclePresenter: () -> Unit,
     onPrepareOffline: () -> Unit
 ) {
     BackHandler(onBack = onMinimize)
@@ -145,11 +145,11 @@ fun PodcastEpisodePlayerView(
                     }
 
                     Surface(
-                        onClick = onSwapLeadHost,
+                        onClick = onCyclePresenter,
                         shape = RoundedCornerShape(14.dp),
                         color = sacredColors.dawnGoldContainer,
                         border = BorderStroke(1.dp, sacredColors.dawnGold.copy(alpha = 0.45f)),
-                        modifier = Modifier.testTag("podcast_swap_voices_button")
+                        modifier = Modifier.testTag("podcast_cycle_presenter_button")
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -158,14 +158,14 @@ fun PodcastEpisodePlayerView(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.SwapHoriz,
-                                contentDescription = stringResource(R.string.podcast_swap_voices_desc),
+                                contentDescription = stringResource(R.string.podcast_cycle_presenter_desc),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = stringResource(
-                                    R.string.podcast_lead_voice_label,
-                                    uiState.leadHost.displayName
+                                    R.string.podcast_presenter_chip_label,
+                                    uiState.activePresenter.displayName
                                 ),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
@@ -326,9 +326,8 @@ private fun PodcastStudioDeck(
 ) {
     val sacredColors = LocalSacredColors.current
     val activeTurn = uiState.activeTurn
-    val activeHost = activeTurn?.host ?: uiState.leadHost
-    val isGraceSpeaking = activeHost == PodcastHost.GRACE
-    val speakerAccent = if (isGraceSpeaking) sacredColors.dawnGold else sacredColors.sage
+    val activeHost = activeTurn?.host ?: uiState.activePresenter
+    val speakerAccent = sacredColors.dawnGold
     val allCached = uiState.dialogueTurns.isNotEmpty() &&
         uiState.cachedTurnIndices.size >= uiState.dialogueTurns.size
 
@@ -398,7 +397,7 @@ private fun PodcastStudioDeck(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = stringResource(R.string.podcast_alternating_voices_badge),
+                            text = stringResource(R.string.podcast_solo_presenter_badge),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f)
                         )
@@ -454,7 +453,7 @@ private fun PodcastStudioDeck(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "${activeHost.displayName} · ${activeHost.murfVoiceId}",
+                                text = "${activeHost.displayName} · ${activeHost.roleLabel}",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onPrimary,
                                 fontWeight = FontWeight.SemiBold
@@ -736,16 +735,14 @@ private fun PodcastChapterRow(
     onClick: () -> Unit
 ) {
     val sacredColors = LocalSacredColors.current
-    val isGrace = turn.host == PodcastHost.GRACE
-    val hostColor = if (isGrace) sacredColors.dawnGold else sacredColors.sage
-    val hostContainer = if (isGrace) sacredColors.dawnGoldContainer else sacredColors.sageContainer
+    val accentColor = sacredColors.dawnGold
 
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = if (isActive) MaterialTheme.colorScheme.surface else sacredColors.warmCard,
         border = BorderStroke(
             width = if (isActive) 1.5.dp else 1.dp,
-            color = if (isActive) hostColor else sacredColors.hairline
+            color = if (isActive) accentColor else sacredColors.hairline
         ),
         tonalElevation = if (isActive) 2.dp else 0.dp,
         modifier = Modifier
@@ -763,7 +760,7 @@ private fun PodcastChapterRow(
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = hostContainer
+                color = sacredColors.dawnGoldContainer
             ) {
                 Text(
                     text = turn.timestampLabel,
@@ -783,9 +780,9 @@ private fun PodcastChapterRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Voice: ${turn.host.displayName}",
+                    text = "Chapter ${turn.index + 1} · ${turn.host.displayName}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = hostColor
+                    color = sacredColors.subtleText
                 )
             }
 
@@ -794,14 +791,14 @@ private fun PodcastChapterRow(
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
-                        color = hostColor
+                        color = accentColor
                     )
                 }
                 isPlaying -> {
                     Icon(
                         imageVector = Icons.Rounded.GraphicEq,
                         contentDescription = stringResource(R.string.podcast_status_playing),
-                        tint = hostColor,
+                        tint = accentColor,
                         modifier = Modifier.size(20.dp)
                     )
                 }

@@ -29,7 +29,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Podcasts
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,8 +61,7 @@ import com.example.ui.theme.LocalSacredColors
 fun PodcastsScreen(
     uiState: PodcastUiState,
     onSelectMonth: (Int) -> Unit,
-    onOpenTrack: (PlayablePodcastTrack, Boolean) -> Unit,
-    onSwapLeadHost: () -> Unit
+    onOpenTrack: (PlayablePodcastTrack, Boolean) -> Unit
 ) {
     val sacredColors = LocalSacredColors.current
     val selectedMonthPlaylist = uiState.selectedMonthPlaylist
@@ -95,11 +93,9 @@ fun PodcastsScreen(
             ) {
                 item(key = "podcast_hero") {
                     PodcastHeroHeader(
-                        leadHost = uiState.leadHost,
                         totalMonthly = totalMonthly,
                         totalDaily = totalDaily,
-                        totalTracks = totalTracks,
-                        onSwapLeadHost = onSwapLeadHost
+                        totalTracks = totalTracks
                     )
                 }
 
@@ -213,14 +209,12 @@ fun PodcastsScreen(
 
 @Composable
 private fun PodcastHeroHeader(
-    leadHost: PodcastHost,
     totalMonthly: Int,
     totalDaily: Int,
-    totalTracks: Int,
-    onSwapLeadHost: () -> Unit
+    totalTracks: Int
 ) {
     val sacredColors = LocalSacredColors.current
-    val partnerHost = leadHost.alternate()
+    val presenterNames = PodcastHost.entries.joinToString(" · ") { it.displayName }
 
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
@@ -278,51 +272,37 @@ private fun PodcastHeroHeader(
                 )
 
                 Surface(
-                    onClick = onSwapLeadHost,
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.14f),
                     border = BorderStroke(1.dp, sacredColors.dawnGold.copy(alpha = 0.45f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("podcast_catalog_swap_voices")
+                        .testTag("podcast_catalog_presenter_roster")
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.RecordVoiceOver,
-                                contentDescription = null,
-                                tint = sacredColors.dawnGold,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = "${leadHost.displayName} ↔ ${partnerHost.displayName}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Murf Studio · ${leadHost.murfVoiceId} & ${partnerHost.murfVoiceId}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
-
                         Icon(
-                            imageVector = Icons.Rounded.SwapHoriz,
-                            contentDescription = stringResource(R.string.podcast_swap_voices_desc),
+                            imageVector = Icons.Rounded.RecordVoiceOver,
+                            contentDescription = null,
                             tint = sacredColors.dawnGold,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
+                        Column {
+                            Text(
+                                text = stringResource(R.string.podcast_roster_title),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = presenterNames,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.84f)
+                            )
+                        }
                     }
                 }
             }
@@ -338,6 +318,7 @@ private fun TodayDailySpotlightCard(
 ) {
     val sacredColors = LocalSacredColors.current
     val daily = todayTrack.daily
+    val presenter = PodcastHost.presenterForTrack(todayTrack)
 
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -371,7 +352,7 @@ private fun TodayDailySpotlightCard(
                         text = stringResource(
                             R.string.podcast_today_spotlight_label,
                             daily.dateString.uppercase(),
-                            daily.trackId
+                            presenter.displayName.uppercase()
                         ),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
@@ -440,6 +421,7 @@ private fun MonthlyOrientationFeatureCard(
 ) {
     val sacredColors = LocalSacredColors.current
     val orientation = playlist.monthlyOrientationPodcast
+    val presenter = PodcastHost.forMonth(playlist.monthNumber)
 
     Surface(
         shape = MaterialTheme.shapes.large,
@@ -498,17 +480,20 @@ private fun MonthlyOrientationFeatureCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = playlist.themeScripture,
+                        text = "Host: ${presenter.displayName}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = sacredColors.subtleText
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "· ${orientation.chapterMarkers.size} Chapters",
+                        text = "· ${playlist.themeScripture}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = sacredColors.subtleText
+                        color = sacredColors.subtleText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -546,6 +531,8 @@ private fun DailyPodcastTrackCard(
     onPlay: () -> Unit
 ) {
     val sacredColors = LocalSacredColors.current
+    val presenter = PodcastHost.forDayOfYear(daily.dayOfYear)
+
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
@@ -612,7 +599,7 @@ private fun DailyPodcastTrackCard(
                         }
                     }
                     Text(
-                        text = daily.weekTitle,
+                        text = "${presenter.displayName} · ${daily.weekTitle}",
                         style = MaterialTheme.typography.labelSmall,
                         color = sacredColors.dawnGold,
                         maxLines = 1,

@@ -9,7 +9,6 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -82,58 +81,60 @@ class AudioPlaylistManifestTest {
     }
 
     @Test
-    fun monthlyOrientationScriptStrictlyAlternatesNaturalMurfVoices() {
+    fun eachPodcastHasSingleSoloPresenterAndRotatesAcrossTopFiveMurfVoices() {
+        assertEquals(5, PodcastHost.entries.size)
+        assertEquals(
+            listOf("en-US-natalie", "en-US-terrell", "en-US-julia", "en-US-miles", "en-US-amara"),
+            PodcastHost.entries.map { it.murfVoiceId }
+        )
+
         val manifest = loadManifestFromAssets()
+
+        // Monthly orientations rotate across all 5 voices from month to month
+        val firstSixMonthPresenters = manifest.monthlyPlaylists.take(6).map { playlist ->
+            val track = PlayablePodcastTrack.MonthlyOrientation(playlist)
+            val turns = PodcastScriptBuilder.buildDialogueTurns(track)
+            assertEquals(4, turns.size)
+            val expectedHost = PodcastHost.forMonth(playlist.monthNumber)
+            // Every chapter in a podcast uses the exact same single presenter
+            turns.forEach { turn ->
+                assertEquals(expectedHost, turn.host)
+                assertEquals(expectedHost.murfVoiceId, turn.voiceId)
+                assertTrue(turn.spokenText.isNotBlank())
+                assertTrue(turn.spokenText.length <= PodcastScriptBuilder.MAX_MURF_TURN_CHARS)
+                assertTrue(turn.variation in 4..5)
+                assertTrue(turn.rate < 0)
+                assertFalse(turn.spokenText.contains("(KJV)"))
+                assertFalse(Regex("\\bGods\\b").containsMatchIn(turn.spokenText))
+            }
+            expectedHost
+        }
+
+        assertEquals(PodcastHost.entries, firstSixMonthPresenters.take(5))
+        assertEquals(PodcastHost.NATALIE, firstSixMonthPresenters[5])
+
+        // Daily podcasts rotate across all 5 voices from day to day while staying solo within each episode
         val january = manifest.monthlyPlaylists.first()
-        val track = PlayablePodcastTrack.MonthlyOrientation(january)
+        val firstSixDayPresenters = january.dailyPodcasts.take(6).map { daily ->
+            val track = PlayablePodcastTrack.DailyEpisode(january, daily)
+            val turns = PodcastScriptBuilder.buildDialogueTurns(track)
+            assertEquals(4, turns.size)
+            assertEquals(listOf("00:00", "00:45", "01:45", "02:30"), turns.map { it.timestampLabel })
 
-        val turns = PodcastScriptBuilder.buildDialogueTurns(track, leadHost = PodcastHost.GRACE)
-        assertEquals(4, turns.size)
-        assertEquals("00:00", turns[0].timestampLabel)
-        assertEquals("02:00", turns[1].timestampLabel)
-        assertEquals("04:30", turns[2].timestampLabel)
-        assertEquals("07:30", turns[3].timestampLabel)
-        assertEquals(PodcastHost.GRACE, turns.first().host)
-
-        for (i in 1 until turns.size) {
-            assertNotEquals(turns[i - 1].host, turns[i].host)
-            assertNotEquals(turns[i - 1].voiceId, turns[i].voiceId)
+            val expectedHost = PodcastHost.forDayOfYear(daily.dayOfYear)
+            turns.forEach { turn ->
+                assertEquals(expectedHost, turn.host)
+                assertEquals(expectedHost.murfVoiceId, turn.voiceId)
+                assertNotNull(turn.dayReference)
+                assertEquals(daily.dayOfYear, turn.dayReference)
+                assertTrue(turn.spokenText.contains("[pause "))
+                assertFalse(turn.spokenText.contains("(KJV)"))
+            }
+            expectedHost
         }
-        turns.forEach { turn ->
-            assertTrue(turn.spokenText.isNotBlank())
-            assertTrue(turn.spokenText.length <= PodcastScriptBuilder.MAX_MURF_TURN_CHARS)
-            assertTrue(turn.variation in 4..5)
-            assertTrue(turn.rate < 0)
-            assertFalse("Spoken text must not contain KJV abbreviation", turn.spokenText.contains("(KJV)"))
-            assertFalse("Spoken text should naturalize Gods -> God's", Regex("\\bGods\\b").containsMatchIn(turn.spokenText))
-        }
-    }
 
-    @Test
-    fun dailyPodcastScriptAlternatesVoicesAndSupportsSwappingLeadHost() {
-        val manifest = loadManifestFromAssets()
-        val january = manifest.monthlyPlaylists.first()
-        val day1 = january.dailyPodcasts.first()
-        val track = PlayablePodcastTrack.DailyEpisode(january, day1)
-
-        val marcusFirst = PodcastScriptBuilder.buildDialogueTurns(track, leadHost = PodcastHost.MARCUS)
-        assertEquals(4, marcusFirst.size)
-        assertEquals(PodcastHost.MARCUS, marcusFirst[0].host)
-        assertEquals(PodcastHost.GRACE, marcusFirst[1].host)
-        assertEquals(PodcastHost.MARCUS, marcusFirst[2].host)
-        assertEquals(PodcastHost.GRACE, marcusFirst[3].host)
-
-        assertEquals("00:00", marcusFirst[0].timestampLabel)
-        assertEquals("00:45", marcusFirst[1].timestampLabel)
-        assertEquals("01:45", marcusFirst[2].timestampLabel)
-        assertEquals("02:30", marcusFirst[3].timestampLabel)
-
-        marcusFirst.forEach { turn ->
-            assertNotNull(turn.dayReference)
-            assertEquals(1, turn.dayReference)
-            assertTrue(turn.spokenText.contains("[pause "))
-            assertFalse(turn.spokenText.contains("(KJV)"))
-        }
+        assertEquals(PodcastHost.entries, firstSixDayPresenters.take(5))
+        assertEquals(PodcastHost.NATALIE, firstSixDayPresenters[5])
     }
 
     @Test
